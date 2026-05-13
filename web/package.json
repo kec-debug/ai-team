@@ -1,0 +1,16 @@
+{
+  "name": "ai-team-web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Browser GUI for the local AI Dev Team tmux control center.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.3"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

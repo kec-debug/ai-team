@@ -67,6 +67,45 @@ chmod +x scripts/*.sh
 - [docs/workflow.md](docs/workflow.md) — 단계별 작업 흐름
 - [docs/safety-rules.md](docs/safety-rules.md) — 안전 규칙
 
+## 브라우저 GUI v1
+
+PuTTY나 tmux 직접 조작 없이 로컬 브라우저에서 AI 개발팀을 제어할 수 있는 간단한 GUI가 `web/`에 있습니다. 기본 주소는 `http://127.0.0.1:3100`이며 외부 공개용으로 만들지 않았습니다.
+
+처음 실행할 때:
+
+```bash
+cd web
+npm install
+npm start
+```
+
+다른 포트나 호스트가 필요하면 환경변수로 지정합니다.
+
+```bash
+HOST=127.0.0.1 PORT=3100 npm start
+```
+
+GUI에서 할 수 있는 일:
+
+- 프로젝트 경로, 작업 ID, 한국어 작업 요청 입력
+- AI 팀 tmux 세션 상태 확인과 시작
+- 작업 폴더 생성과 `input.ko.md` 저장
+- **전체 파이프라인 실행** 버튼으로 작업 폴더 생성 → 입력 저장 → Gemini Manager → Claude Architect → Codex Implementer → `local-diff.patch` 저장 → Claude Reviewer 순서 진행
+- 파이프라인 현재 단계, 성공 / 실패 / 수동 개입 필요 상태 확인
+- 선택한 프로젝트 경로와 작업 ID 기준으로 파이프라인 상태 확인 및 `파이프라인 상태 초기화`
+- 실시간 tmux 출력 확인, 승인 / 세션 승인 / 거절 / 중단 키 입력 전송
+- AI팀 재시작과 GUI 서버 재시작
+- 생성된 산출물, git diff 저장 상태, Reviewer decision 요약 확인
+- Gemini Manager, Claude Architect, Codex Implementer, Claude Reviewer 창으로 정해진 프롬프트 전송
+- `git status`, `git diff` 확인
+- `docs/ai/jobs/<JOB_ID>/` 아래 산출물 파일 확인
+
+`전체 파이프라인 실행`은 브라우저 요청을 오래 붙잡지 않습니다. 서버가 메모리에 작업 상태를 만들고 백그라운드에서 안전한 고정 단계만 실행하며, GUI는 `GET /api/pipeline/status`로 상태를 폴링합니다. 서버를 재시작하면 이 메모리 상태는 사라집니다. 이미 tmux 창에 전달된 작업은 계속 진행될 수 있으므로, 재시작 후에는 tmux와 산출물 파일을 직접 확인하세요.
+
+GUI는 임의 shell command 입력을 제공하지 않습니다. 서버는 허용된 스크립트, 고정 tmux 창, 고정 git 조회 명령만 실행합니다. 승인 버튼도 allowlist에 있는 tmux 창에 정해진 키만 보냅니다. 파이프라인도 `commit`, `push`, PR 생성, merge, 배포를 자동 실행하지 않습니다. 최종 변경 확인, 커밋, 푸시, PR 생성, merge 승인은 사람이 `git-shell` 창과 GitHub에서 직접 처리해야 합니다. 자동 merge는 안전상 제공하지 않습니다.
+
+AI 도구가 중간 승인을 요구하거나 제한 시간 안에 예상 산출물을 만들지 못하면 GUI는 해당 단계를 `manual_required`로 표시합니다. 이 경우 사람이 해당 tmux 창에서 진행 상황을 확인하고 수동으로 이어가야 합니다.
+
 ## 체크리스트: push 전 확인
 
 - `git-shell` 창에서 `git status`와 `git diff`로 변경 파일을 확인합니다.
