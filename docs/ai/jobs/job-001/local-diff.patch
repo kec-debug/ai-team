@@ -1,0 +1,102 @@
+diff --git a/README.md b/README.md
+index 8cde607..1c13df7 100644
+--- a/README.md
++++ b/README.md
+@@ -5,37 +5,57 @@
+ 
+ ## 팀 구성
+ 
+-| tmux 창 | 역할 | 책임 | 실행 도구 |
+-|---------|------|------|-----------|
+-| 1. `gemini-manager` | Gemini Manager | 한국어 요청 → 영어 작업 계획 | `gemini` |
+-| 2. `claude-architect` | Claude Architect | 아키텍처 검토, 리스크, 테스트 전략 | `claude` |
+-| 3. `codex-implementer` | Codex Implementer | 실제 구현, 테스트, 패치 | `codex` |
+-| 4. `claude-reviewer` | Claude Reviewer | PR diff 리뷰, 품질 게이트 | `claude` |
+-| 5. `git-shell` | Git Shell | git / gh / 브랜치 / 커밋 / PR / CI | 일반 셸 |
++| tmux 번호 | tmux 창 | 역할 | 하는 일 | 주요 산출물 |
++|-----------|---------|------|---------|-----------|
++| `0` | `gemini-manager` | Gemini Manager | 한국어 요청을 읽고 영어 작업 계획으로 정리 | `plan.en.md` |
++| `1` | `claude-architect` | Claude Architect | 설계, 리스크, 테스트 전략 검토 | `architecture.md` |
++| `2` | `codex-implementer` | Codex Implementer | 실제 파일 수정, 테스트 실행, 변경 요약 작성 | 코드 변경 + `patch.md` |
++| `3` | `claude-reviewer` | Claude Reviewer | PR diff와 안전 규칙 준수 여부 리뷰 | `review.md` |
++| `4` | `git-shell` | Git Shell | 브랜치, 커밋, PR, CI 확인을 사람이 직접 실행 | git / gh 명령 결과 |
+ 
+ ## 빠른 시작
+ 
++처음 실행한다면 아래 순서대로 진행하세요.
++
++1. 스크립트 실행 권한을 확인합니다.
++
+ ```bash
+-# 1) 스크립트 실행 권한 확인
+ chmod +x scripts/*.sh
++```
+ 
+-# 2) AI 팀 시작 — 현재 디렉터리를 작업 디렉터리로 사용
++2. AI 팀 tmux 세션을 시작합니다. 인자를 생략하면 현재 디렉터리를 작업 디렉터리로 사용합니다.
++
++```bash
+ ./scripts/start-ai-team.sh
++```
++
++작업할 프로젝트가 다른 위치에 있으면 경로를 전달합니다.
+ 
+-# 또는, 작업할 프로젝트 경로를 인자로 전달
++```bash
+ ./scripts/start-ai-team.sh ~/projects/my-app
++```
++
++3. 실제 작업 폴더를 만듭니다.
+ 
+-# 3) 첫 작업 폴더 만들기
++```bash
+ ./scripts/create-job.sh ~/projects/my-app job-001
++```
+ 
+-# 4) 세션 상태 확인
+-./scripts/status-ai-team.sh
++이 명령은 실제 작업 파일을 `docs/ai/jobs/<JOB_ID>/` 아래에 만듭니다. 예를 들어 `job-001`이면 `docs/ai/jobs/job-001/input.ko.md`를 작성합니다.
++
++4. `gemini-manager` 창에서 `input.ko.md`를 바탕으로 계획을 만들고, 이후 `claude-architect` → `codex-implementer` → `claude-reviewer` 순서로 진행합니다.
++
++5. 세션 상태를 확인하거나 종료할 수 있습니다.
+ 
+-# 5) 세션 종료
++```bash
++./scripts/status-ai-team.sh
+ ./scripts/stop-ai-team.sh
+ ```
+ 
+-tmux 창 전환은 `Ctrl-b` + 숫자(0~4), 분리(detach)는 `Ctrl-b` + `d`.
++> **tmux 창 이동**
++> `Ctrl-b`를 누른 뒤 손을 떼고 숫자를 누릅니다.
++> 예: `Ctrl-b` 다음 `0` = `gemini-manager`, `Ctrl-b` 다음 `2` = `codex-implementer`.
++> 분리(detach)는 `Ctrl-b` 다음 `d`입니다. 다시 붙으려면 `tmux attach -t ai-team`을 실행하세요.
+ 
+ ## 워크플로 한 줄 요약
+ 
+@@ -47,6 +67,15 @@ tmux 창 전환은 `Ctrl-b` + 숫자(0~4), 분리(detach)는 `Ctrl-b` + `d`.
+ - [docs/workflow.md](docs/workflow.md) — 단계별 작업 흐름
+ - [docs/safety-rules.md](docs/safety-rules.md) — 안전 규칙
+ 
++## 체크리스트: push 전 확인
++
++- `git-shell` 창에서 `git status`와 `git diff`로 변경 파일을 확인합니다.
++- 변경이 현재 작업 범위에만 있는지 확인합니다.
++- `scripts/`, 비밀 정보, 인증, 결제, DB 마이그레이션, 운영 인프라가 의도치 않게 바뀌지 않았는지 확인합니다.
++- `main`에 직접 push하지 말고 작업 브랜치에서 PR로 진행합니다.
++- Codex 구현 요약과 Claude Reviewer 리뷰 결과를 확인합니다.
++- 전체 규칙은 [docs/safety-rules.md](docs/safety-rules.md), 단계별 흐름은 [docs/workflow.md](docs/workflow.md)를 봅니다.
++
+ ## 역할 프롬프트
+ 
+ 각 AI 역할이 어떻게 행동해야 하는지는 `prompts/` 안에 있습니다. 필요하면 각 창에서 해당 파일을 열어 그대로 시스템 프롬프트로 사용하세요.
+@@ -84,7 +113,7 @@ ai-job <PROJECT> <ID>        # 작업 폴더 만들기
+ 
+ ## 예시
+ 
+-`examples/job-001/input.ko.md` — 한국어 작업 요청서가 채워진 모습의 예시입니다.
++`examples/job-001/input.ko.md`는 참고용 예시입니다. 실제 작업은 `./scripts/create-job.sh <PROJECT_DIR> <JOB_ID>`로 만들고, 생성된 `docs/ai/jobs/<JOB_ID>/input.ko.md`에 요청을 작성하세요.
+ 
+ ## 디렉터리 구조
+ 
