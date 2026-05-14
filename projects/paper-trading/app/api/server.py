@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 
@@ -42,6 +43,10 @@ def create_app() -> FastAPI:
         app.state.oms = oms
         app.state.strategy = strategy
         app.state.runner = PaperRunner(settings, strategy, oms)
+        from app.runtime.dry_run import DryRunController
+
+        project_dir = Path(__file__).resolve().parents[2]
+        app.state.dry_run_controller = DryRunController(settings, app.state.runner, project_dir)
         app.state.session_router = session_router
         app.state.portfolio = portfolio
         app.state.configured_brokers = configured_brokers

@@ -47,9 +47,13 @@ def test_paper_status_kis_metadata_fields(monkeypatch):
     assert body["market_orders_allowed"] is False
     assert isinstance(body["kis_config_loaded"], bool)
     assert body["kis_authenticated"] is False
+    assert body["kis_token_expires_at_masked_or_relative"] is None
     assert body["kis_account_loaded"] is False
+    assert body["kis_positions_loaded"] is False
+    assert body["kis_cash_balance_loaded"] is False
     assert body["kis_market_data_available"] is False
     assert body["last_broker_error"] is None
+    assert body["kis_last_error"] is None
     assert body["account_no_masked"] == "<unset>"
     assert body["secret_exposed"] is False
     assert "kis_" + "secret_exposed" not in body
@@ -58,6 +62,8 @@ def test_paper_status_kis_metadata_fields(monkeypatch):
     assert body["kis_order_entry_mode"] == "disabled"
     assert body["kis_order_methods_fail_closed"] is True
     assert body["kill_switch_engaged"] is False
+    assert body["kis_order_dry_run"] is True
+    assert body["dry_run_running"] is False
     assert body["kis_order_submission_available"] is False
     assert body["kis_cancel_available"] is False
     assert body["kis_replace_available"] is False
@@ -87,15 +93,21 @@ def test_paper_status_with_kis_config_masks_account(monkeypatch):
     assert body["kis_config_loaded"] is True
     assert body["configured_brokers"] == ["KisBroker"]
     assert body["kis_authenticated"] is False
+    assert body["kis_token_expires_at_masked_or_relative"] is None
     assert body["kis_account_loaded"] is False
+    assert body["kis_positions_loaded"] is False
+    assert body["kis_cash_balance_loaded"] is False
     assert body["kis_market_data_available"] is False
     assert body["last_broker_error"] is None
+    assert body["kis_last_error"] is None
     assert body["account_no_masked"] == "***5678"
     assert body["secret_exposed"] is False
     assert body["kis_order_entry_ready"] is True
     assert body["kis_order_entry_mode"] == "not_implemented"
     assert body["kis_order_methods_fail_closed"] is True
     assert body["kill_switch_engaged"] is False
+    assert body["kis_order_dry_run"] is True
+    assert body["dry_run_running"] is False
     assert body["kis_order_submission_available"] is False
     assert body["kis_cancel_available"] is False
     assert body["kis_replace_available"] is False

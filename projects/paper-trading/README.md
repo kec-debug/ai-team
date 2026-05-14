@@ -82,6 +82,7 @@ Blocked candidates never reach OMS.
 | `KIS_APP_SECRET` | KIS app secret | `.env`에서만 |
 | `ALLOW_MARKET_ORDERS` | 항상 `false` | `true`이면 `load_settings()` 거부 |
 | `KILL_SWITCH_ENGAGED` | 주문 kill switch | `true`이면 RiskEngine/KIS pre-flight 거부 |
+| `KIS_ORDER_DRY_RUN` | KIS 주문 dry-run | 기본 `true`; false여도 공식 endpoint/TR ID 확인 전에는 fail-closed |
 
 ### 주문 흐름 안전 가드와 내부 모델 (mvp-009)
 
@@ -111,6 +112,14 @@ Blocked candidates never reach OMS.
 `KisOrderResponse`는 향후 KIS 응답을 내부 모델로 보관하기 위한 구조입니다. `raw_response_sanitized`는
 `sanitize_kis_response()`를 통과한 dict만 저장해야 하며, app key/secret/account/access token으로 보이는
 키 또는 값은 `<redacted>`로 치환됩니다.
+
+`KisHttpClient`는 timeout/retry 설정과 sanitized preview만 제공하는 공통 HTTP 경계입니다. 현재 repo 안에
+공식 KIS endpoint/path/TR ID/payload 값이 없으므로 실제 HTTP 호출 메서드는 `NotImplementedError`로 남아
+있습니다. 인증, 계좌/잔고/포지션, 시세, 주문 전송 모두 공식 문서값이 확인될 때까지 fail-closed입니다.
+
+`KIS_ORDER_DRY_RUN=true`(기본값)에서는 `place_order()`가 HTTP 전송 없이 sanitized payload preview를 만들고
+`OrderAck(status="dry_run")`만 반환합니다. `KIS_ORDER_DRY_RUN=false`로 바꿔도 공식 KIS 모의투자 주문
+endpoint/TR ID/payload가 확인되지 않았으므로 실제 전송은 하지 않고 fail-closed 됩니다.
 
 `KisBroker.capabilities()`는 현재 모든 주문 관련 기능을 `false`로 반환합니다. 공식 KIS 모의투자 주문 문서로
 endpoint/TR ID/payload를 확인하기 전까지 submission/cancel/replace/open_orders/fills/order_status는 모두
@@ -149,3 +158,51 @@ KIS Open API 공식 문서를 확인하기 전까지 다음은 구현하지 않�
 - Market data ingestion.
 - More strategies and portfolio controls.
 - Implement KIS Open API HTTP calls (`authenticate`, `refresh_token`, account/quote queries) once endpoints/TR IDs are confirmed from official documentation.
+
+## 공식 KIS 문서값 진행 상황 (mvp-014)
+
+KIS Open API 모의투자 HTTP 연결을 구현하기 위해 필요한 공식 문서값의 갭은 [`docs/kis/MISSING_OFFICIAL_VALUES.md`](../../docs/kis/MISSING_OFFICIAL_VALUES.md)에 정리되어 있습니다.
+
+본 저장소는 endpoint URL, TR ID, header, payload를 추측하지 않습니다. `MISSING_OFFICIAL_VALUES.md`의 항목이 사용자에 의해 `Confirmed` 값 `yes`로 변경되기 전까지 다음 KIS HTTP 기능은 모두 `NotImplementedError` 또는 dry-run 상태로 유지됩니다.
+
+- OAuth 인증, 토큰 갱신
+- 해외주식 잔고/포지션/현금 조회
+- 해외주식 시세 조회
+- 모의투자 지정가 주문, 취소, 정정
+- 미체결/체결/주문 상태 조회
+
+기본값 `KIS_ORDER_DRY_RUN=true`가 유지되는 한 KIS 주문 메서드는 HTTP를 전송하지 않으며, dry-run preview를 반환합니다(또는 NotImplementedError로 fail-closed). `/paper/status`에서 `kis_order_dry_run: true` 필드로 확인할 수 있습니다.
+
+## 장시간 KIS dry-run 검증 (mvp-018)
+
+`DryRunController`는 paper-trading 시스템을 장시간 안정성 검증할 수 있는 stateful runner입니다. KIS HTTP는 호출하지 않으며, 명시적 tick 호출로만 한 사이클씩 실행합니다.
+
+엔드포인트:
+
+| 메서드 | 경로 | 설명 |
+| --- | --- | --- |
+| `POST` | `/paper/dry-run/start` | 새 run 시작. 이미 running이면 409. `reports/dry_run/run_<timestamp>/` 디렉터리 생성. |
+| `POST` | `/paper/dry-run/tick` | snapshots 1개 사이클 처리. running이 아니면 409. kill switch면 `blocked_kill_switch`. |
+| `POST` | `/paper/dry-run/stop` | 정지. running이 아니면 409. |
+| `GET` | `/paper/dry-run/status` | 현재 state, counters, summary. credentials 미포함. |
+
+리포트 파일은 프로젝트 `.gitignore`로 제외됩니다.
+
+- `reports/dry_run/run_<timestamp>/events.jsonl` - tick 이벤트와 후보별 결과
+- `reports/dry_run/run_<timestamp>/summary.json` - 누적 summary
+- `reports/dry_run/run_<timestamp>/orders.csv` - OMS ack가 생성된 후보
+
+안전 동작:
+
+- 모든 리포트 dict는 `dump_safe()`로 검사되며, credential-like key가 포함되면 쓰기를 거절합니다.
+- `kill_switch_engaged=true`이면 tick이 strategy 평가 없이 `blocked_kill_switch`로 종료됩니다.
+- `errors_total >= DRY_RUN_MAX_ERRORS_BEFORE_AUTO_STOP`이면 `auto_stopped`로 전환합니다.
+- `DRY_RUN_MAX_TICKS`에 도달해도 `auto_stopped`로 전환합니다.
+
+```bash
+curl -X POST http://127.0.0.1:8000/paper/dry-run/start
+curl -X POST http://127.0.0.1:8000/paper/dry-run/tick -H 'content-type: application/json' \
+  -d '{"snapshots":[]}'
+curl -X GET http://127.0.0.1:8000/paper/dry-run/status
+curl -X POST http://127.0.0.1:8000/paper/dry-run/stop
+```

@@ -34,6 +34,10 @@ class Settings:
     kis_app_secret: str | None = field(default=None, repr=False)
     allow_market_orders: bool = False
     kill_switch_engaged: bool = False
+    kis_order_dry_run: bool = True
+    dry_run_reports_dir: str = "reports/dry_run"
+    dry_run_max_errors_before_auto_stop: int = 10
+    dry_run_max_ticks: int | None = None
 
 
 def _decimal_env(name: str, default: Decimal) -> Decimal:
@@ -114,4 +118,8 @@ def load_settings() -> Settings:
         kis_app_secret=_str_env("KIS_APP_SECRET"),
         allow_market_orders=False,
         kill_switch_engaged=_bool_env("KILL_SWITCH_ENGAGED", False),
+        kis_order_dry_run=_bool_env("KIS_ORDER_DRY_RUN", True),
+        dry_run_reports_dir=_str_env("DRY_RUN_REPORTS_DIR") or "reports/dry_run",
+        dry_run_max_errors_before_auto_stop=_int_env("DRY_RUN_MAX_ERRORS_BEFORE_AUTO_STOP", 10),
+        dry_run_max_ticks=(_int_env("DRY_RUN_MAX_TICKS", 0) or None) if os.getenv("DRY_RUN_MAX_TICKS") else None,
     )
