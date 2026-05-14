@@ -16,6 +16,8 @@ const SAFE_WINDOWS = {
   'claude-plan': 'claude',
   'codex-implement': 'codex',
   'claude-review': 'claude',
+  'codex-review-fix': 'codex',
+  'claude-re-review': 'claude',
   claude: 'claude',
   codex: 'codex'
 };
@@ -56,9 +58,7 @@ const ISSUE_PATTERNS = [
   {
     type: 'approval_required',
     patterns: [
-      /approval|approve|allow|continue|proceed|permission/i,
-      /승인|허용|계속 진행|진행하시겠습니까|거절/i,
-      /1\).*(approve|allow|승인|계속)|2\).*(session|세션)|3\).*(reject|거절)/i
+      /allow execution|allow edit|do you want to proceed|would you like to continue|allow for this session|no, suggest changes|enter your response/i
     ]
   },
   {
@@ -80,12 +80,16 @@ const pipelineStates = new Map();
 const PIPELINE_STAGES = [
   { id: 'claude-plan', state: 'claude_planning', label: 'Claude 계획 생성', role: 'claude-plan', window: 'claude', artifacts: ['plan.md', 'codex-task.md'] },
   { id: 'codex-implement', state: 'codex_implementing', label: 'Codex 구현 실행', role: 'codex-implement', window: 'codex', artifacts: ['patch.md'] },
-  { id: 'claude-review', state: 'claude_reviewing', label: 'Claude 리뷰 실행', role: 'claude-review', window: 'claude', artifacts: ['review.md'] }
+  { id: 'claude-review', state: 'claude_reviewing', label: 'Claude 리뷰 실행', role: 'claude-review', window: 'claude', artifacts: ['review.md'] },
+  { id: 'codex-review-fix', state: 'codex_fixing_review', label: 'Codex 리뷰 반영 실행', role: 'codex-review-fix', window: 'codex', artifacts: ['status.md'] },
+  { id: 'claude-re-review', state: 'claude_re_reviewing', label: 'Claude 재리뷰 실행', role: 'claude-re-review', window: 'claude', artifacts: ['review.md'] }
 ];
 const ACTIVE_PIPELINE_STATES = new Set([
   'claude_planning',
   'codex_implementing',
   'claude_reviewing',
+  'codex_fixing_review',
+  'claude_re_reviewing',
   'approval_required'
 ]);
 const FINAL_PIPELINE_STATES = new Set([
@@ -93,6 +97,9 @@ const FINAL_PIPELINE_STATES = new Set([
   'failed',
   'blocked',
   'manual_review_required',
+  'review_approved',
+  'review_changes_requested',
+  'manual_final_approval_required',
   'idle'
 ]);
 const ARTIFACT_PRIORITY = [
@@ -240,8 +247,97 @@ function currentTargetWindow(state) {
   return stage ? stage.window : null;
 }
 
-function publicIdlePipelineState(projectDir = null, jobId = null) {
+function stageByState(status) {
+  return PIPELINE_STAGES.find((stage) => stage.state === status) || null;
+}
+
+function stageForGate(status, currentStep) {
+  return stageById(currentStep) || stageByState(status) || PIPELINE_STAGES[0];
+}
+
+function nextStageGate(state) {
+  if (!state) {
+    return PIPELINE_STAGES[0];
+  }
+  if (state.status === 'succeeded' || state.status === 'review_approved' || state.status === 'manual_final_approval_required') {
+    return null;
+  }
+  if (state.status === 'review_changes_requested') {
+    return stageById('codex-review-fix');
+  }
+  return stageForGate(state.status, state.currentStep);
+}
+
+function artifactPath(projectDir, jobId, name) {
+  return path.join(projectDir, 'docs', 'ai', 'jobs', jobId, name);
+}
+
+async function artifactStat(projectDir, jobId, name) {
+  const stat = await fs.stat(artifactPath(projectDir, jobId, name)).catch(() => null);
+  return stat && stat.isFile() && stat.size > 0 ? stat : null;
+}
+
+async function artifactExists(projectDir, jobId, name, afterIso = null) {
+  const stat = await artifactStat(projectDir, jobId, name);
+  if (!stat) {
+    return false;
+  }
+  if (!afterIso) {
+    return true;
+  }
+  const after = Date.parse(afterIso);
+  return Number.isNaN(after) ? true : stat.mtimeMs >= after;
+}
+
+async function artifactStatus(projectDir, jobId, names, afterIso = null) {
+  const files = [];
+  for (const name of names) {
+    const stat = await artifactStat(projectDir, jobId, name);
+    const exists = stat ? await artifactExists(projectDir, jobId, name, afterIso) : false;
+    files.push({ name, exists, modifiedAt: stat ? stat.mtime.toISOString() : null });
+  }
+  return files;
+}
+
+async function allArtifactsExist(projectDir, jobId, names, afterIso = null) {
+  const files = await artifactStatus(projectDir, jobId, names, afterIso);
+  return {
+    ok: files.every((file) => file.exists),
+    files,
+    missing: files.filter((file) => !file.exists).map((file) => file.name)
+  };
+}
+
+async function buildStageRequirements(projectDir, jobId, stage) {
+  if (!stage) {
+    return {
+      stage: null,
+      label: null,
+      files: [],
+      missing: [],
+      nextStageAllowed: true,
+      guidance: ''
+    };
+  }
+  const requirements = await allArtifactsExist(projectDir, jobId, stage.artifacts);
+  return {
+    stage: stage.id,
+    label: stage.label,
+    files: requirements.files,
+    missing: requirements.missing,
+    nextStageAllowed: requirements.ok,
+    guidance: requirements.ok
+      ? '다음 단계를 실행할 수 있습니다.'
+      : `필수 산출물이 아직 생성되지 않았습니다: ${requirements.missing.join(', ')}`
+  };
+}
+
+async function publicIdlePipelineState(projectDir = null, jobId = null) {
   const now = new Date().toISOString();
+  const artifacts = projectDir && jobId ? await listArtifacts(projectDir, jobId) : [];
+  const requirements = projectDir && jobId
+    ? await buildStageRequirements(projectDir, jobId, PIPELINE_STAGES[0])
+    : await buildStageRequirements(null, null, null);
   return {
     ok: true,
     jobKey: projectDir && jobId ? pipelineKey(projectDir, jobId) : null,
@@ -255,15 +351,22 @@ function publicIdlePipelineState(projectDir = null, jobId = null) {
       targetWindow: null,
       waitingApproval: false,
       detectedIssue: null,
-      artifacts: [],
+      artifacts,
       gitDiff: '-',
       reviewStatus: '-',
-      nextAction: '작업 요청을 입력한 뒤 Claude → Codex → Claude 전체 실행을 누르세요.'
+      nextAction: '작업 요청을 입력한 뒤 Claude → Codex → Claude 전체 실행을 누르세요.',
+      requirements
+    },
+    artifacts,
+    summary: {
+      createdArtifacts: artifacts.map((artifact) => artifact.name),
+      gitDiff: { hasChanges: false, saved: false, path: null, changedFiles: [] },
+      review: { status: 'not_started', file: null, decision: null }
     }
   };
 }
 
-function publicPipelineState(state) {
+async function publicPipelineState(state) {
   if (!state) {
     return publicIdlePipelineState();
   }
@@ -277,6 +380,7 @@ function publicPipelineState(state) {
     ? `${review.status}: ${review.file}${review.decision ? ` / ${review.decision}` : ''}`
     : review.status || '-';
   const detectedIssue = state.detectedIssue || null;
+  const requirements = await buildStageRequirements(state.projectDir, state.jobId, nextStageGate(state));
 
   return {
     ok: true,
@@ -297,7 +401,8 @@ function publicPipelineState(state) {
       artifacts: state.artifacts,
       gitDiff: gitDiffText,
       reviewStatus,
-      nextAction: nextRecommendedAction(state, reviewStatus)
+      nextAction: nextRecommendedAction(state, reviewStatus),
+      requirements
     },
     steps: state.steps,
     artifacts: state.artifacts,
@@ -314,6 +419,18 @@ function pipelineMessage(status) {
   }
   if (status === 'claude_reviewing') {
     return 'Claude가 현재 diff와 패치 요약을 리뷰하는 단계입니다.';
+  }
+  if (status === 'codex_fixing_review') {
+    return 'Codex가 Claude 리뷰의 수정 요청만 반영하는 단계입니다.';
+  }
+  if (status === 'claude_re_reviewing') {
+    return 'Claude가 수정 반영 후 diff를 다시 리뷰하는 단계입니다.';
+  }
+  if (status === 'review_approved' || status === 'manual_final_approval_required') {
+    return 'Claude 리뷰가 승인되었습니다. 이제 사람이 git diff를 확인하고 commit/PR 여부를 결정하세요.';
+  }
+  if (status === 'review_changes_requested') {
+    return 'Claude가 수정 요청을 남겼습니다. Codex가 리뷰 내용을 반영해야 합니다.';
   }
   if (status === 'succeeded') {
     return '파이프라인이 완료되었습니다.';
@@ -334,10 +451,13 @@ function pipelineMessage(status) {
 }
 
 function nextRecommendedAction(state, reviewStatus) {
-  if (state.status === 'succeeded') {
+  if (state.status === 'review_approved' || state.status === 'manual_final_approval_required' || state.status === 'succeeded') {
     return reviewStatus && reviewStatus !== '-'
       ? 'Claude 리뷰 결과를 확인한 뒤 사람이 직접 commit, push, PR 생성 여부를 결정하세요.'
       : '산출물과 git diff를 확인한 뒤 사람이 직접 다음 작업을 결정하세요.';
+  }
+  if (state.status === 'review_changes_requested') {
+    return 'Codex 리뷰 반영 실행을 눌러 Claude가 요청한 수정만 반영하세요.';
   }
   if (state.status === 'manual_review_required' || state.status === 'approval_required') {
     return 'tmux 출력을 확인하고 필요한 경우 승인 / 계속 진행, 세션 승인, 거절, 중단 중 하나를 선택하세요.';
@@ -438,24 +558,25 @@ async function refreshPipelineArtifacts(state) {
 
 async function findFirstExistingArtifact(projectDir, jobId, names) {
   for (const name of names) {
-    const filePath = path.join(projectDir, 'docs', 'ai', 'jobs', jobId, name);
-    const stat = await fs.stat(filePath).catch(() => null);
-    if (stat && stat.isFile() && stat.size > 0) {
-      return { name, path: filePath };
+    if (await artifactExists(projectDir, jobId, name)) {
+      return { name, path: artifactPath(projectDir, jobId, name) };
     }
   }
   return null;
 }
 
-async function waitForArtifact(projectDir, jobId, names, state = null, timeoutMs = PIPELINE_STEP_TIMEOUT_MS) {
+async function waitForArtifacts(projectDir, jobId, names, state = null, timeoutMs = PIPELINE_STEP_TIMEOUT_MS) {
   const started = Date.now();
+  const afterIso = state && state.currentStep
+    ? state.steps.find((step) => step.id === state.currentStep)?.startedAt || null
+    : null;
   while (Date.now() - started < timeoutMs) {
     if (state && !ACTIVE_PIPELINE_STATES.has(state.status)) {
       return null;
     }
-    const artifact = await findFirstExistingArtifact(projectDir, jobId, names);
-    if (artifact) {
-      return artifact;
+    const requirements = await allArtifactsExist(projectDir, jobId, names, afterIso);
+    if (requirements.ok) {
+      return requirements.files;
     }
     await new Promise((resolve) => setTimeout(resolve, PIPELINE_POLL_MS));
   }
@@ -492,6 +613,10 @@ function markTimedOutRunningStep(state) {
 }
 
 function summarizeIssue(output, type) {
+  if (type === 'approval_required') {
+    const block = extractApprovalBlock(output);
+    return block ? block.split(/\r?\n/).map((line) => line.trim()).filter(Boolean)[0]?.slice(0, 220) || ISSUE_RECOMMENDATIONS[type] : ISSUE_RECOMMENDATIONS[type];
+  }
   const lines = String(output || '').split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
   const matcher = ISSUE_PATTERNS.find((item) => item.type === type);
   if (matcher) {
@@ -503,9 +628,72 @@ function summarizeIssue(output, type) {
   return lines.slice(-3).join(' ').slice(0, 220) || ISSUE_RECOMMENDATIONS[type] || '최근 tmux 출력에서 확인이 필요한 상태를 감지했습니다.';
 }
 
+function isLikelyCodeOrSearchLine(line) {
+  return /^\s*[+-]/.test(line)
+    || /\bconst\s+|\bfunction\s+|=>|stageWindows|pipelineStates|server\.js|Search\s+/i.test(line)
+    || /['"]approval_required['"]|['"]manual_review_required['"]/i.test(line)
+    || /^\s*(web\/|app\/|docs\/|projects\/).+:\d+[:\s]/.test(line)
+    || /^\s*```/.test(line);
+}
+
+function stripCodeLikeApprovalLines(output) {
+  const lines = String(output || '').split(/\r?\n/);
+  let inCodeBlock = false;
+  const kept = [];
+  for (const line of lines) {
+    if (/^\s*```/.test(line)) {
+      inCodeBlock = !inCodeBlock;
+      continue;
+    }
+    if (inCodeBlock || isLikelyCodeOrSearchLine(line)) {
+      continue;
+    }
+    kept.push(line);
+  }
+  return kept.join('\n');
+}
+
+function hasApprovalOptions(block) {
+  return /(?:^|\n)\s*(?:1[.)]|2[.)]|3[.)]).*(?:allow|approve|session|reject|승인|세션|거절|continue)/i.test(block);
+}
+
+function hasCommandOrEditSummary(block) {
+  return /(?:command|execute|run|edit|file|patch|modify|명령|실행|수정|편집|파일)\s*[:：]/i.test(block)
+    || /\b(npm|node|python3?|git|mkdir|cat|chmod|cp|mv|rm|sudo|curl|gh)\b/i.test(block)
+    || /[\w./-]+\.(?:js|css|html|md|json|py|ts|tsx|jsx|yml|yaml|sh)/i.test(block);
+}
+
+function findStrictApprovalPromptBlock(output) {
+  const cleaned = stripCodeLikeApprovalLines(output);
+  const lines = cleaned.split(/\r?\n/);
+  const strongPattern = /allow execution|allow edit|do you want to proceed|would you like to continue|allow for this session|no, suggest changes|enter your response/i;
+  for (let i = lines.length - 1; i >= 0; i -= 1) {
+    if (!strongPattern.test(lines[i])) {
+      continue;
+    }
+    const block = lines.slice(Math.max(0, i - 8), Math.min(lines.length, i + 10)).join('\n').trim();
+    if (hasApprovalOptions(block) || hasCommandOrEditSummary(block)) {
+      return block;
+    }
+  }
+  return '';
+}
+
 function detectIssueFromOutput(output, windowName) {
   const text = String(output || '');
   for (const category of ISSUE_PATTERNS) {
+    if (category.type === 'approval_required') {
+      const block = findStrictApprovalPromptBlock(text);
+      if (block) {
+        return {
+          type: category.type,
+          window: windowName,
+          summary: summarizeIssue(block, category.type),
+          recommendation: ISSUE_RECOMMENDATIONS[category.type]
+        };
+      }
+      continue;
+    }
     if (category.patterns.some((pattern) => pattern.test(text))) {
       return {
         type: category.type,
@@ -527,6 +715,94 @@ async function captureRecentTmuxOutput(windowName, lines = 120) {
   return result.ok ? redactedOutput(result.stdout) : '';
 }
 
+function approvalTypeFromBlock(block) {
+  if (/edit|patch|modify|write|수정|편집|파일/i.test(block)) {
+    return 'file_edit';
+  }
+  if (/command|execute|run|명령|실행/i.test(block)) {
+    return 'command_execution';
+  }
+  return 'unknown';
+}
+
+function extractCommandOrTarget(block) {
+  const lines = String(block || '').split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const commandLine = lines.find((line) => /^\$|^>|^`[^`]+`$|^(npm|node|python|python3|git|mkdir|cat|chmod|cp|mv|rm|sudo|curl|gh)\b/i.test(line));
+  if (commandLine) {
+    return commandLine.replace(/^[$>]\s*/, '').replace(/^`|`$/g, '').slice(0, 260);
+  }
+  const fileLine = lines.find((line) => /(?:^|\s)([\w./-]+\.(?:js|css|html|md|json|py|ts|tsx|jsx|yml|yaml|sh))(?:\s|$)/i.test(line));
+  return fileLine ? fileLine.slice(0, 260) : '';
+}
+
+function classifyApprovalRisk(block, commandOrTarget) {
+  const text = `${block || ''}\n${commandOrTarget || ''}`;
+  if (/rm\s+-rf|sudo\b|curl\b.*\|\s*(bash|sh)|git\s+push|gh\s+pr\s+merge|deploy|deployment|kubectl|terraform|\.env|secret|token|api\s*key|auth\/|payment\/|billing\/|migrations?\/|production|prod\b/i.test(text)) {
+    return {
+      risk: 'high',
+      recommendation: '거절 권장',
+      canApproveOnce: false,
+      canApproveSession: false,
+      warning: '승인하지 마세요. 거절 또는 중단하세요.'
+    };
+  }
+  if (/npm\s+install|chmod\b|\bcp\b|\bmv\b/i.test(text) || /(?:^|\s)(?!docs\/ai\/jobs\/)[\w./-]+\.(?:js|css|html|py|ts|tsx|jsx|json|yml|yaml|sh)/i.test(text)) {
+    return {
+      risk: 'medium',
+      recommendation: '직접 확인 필요',
+      canApproveOnce: true,
+      canApproveSession: false,
+      warning: '명령과 수정 대상을 tmux 출력에서 확인한 뒤 1회 승인만 고려하세요.'
+    };
+  }
+  if (/mkdir\s+-p\s+docs\/ai\/jobs\/|docs\/ai\/jobs\/[\w._-]+|git\s+(status|diff)\b|node\s+--check\b|python3?\s+-m\s+(py_compile|compileall)\b|cat\s+docs\/ai\/jobs\//i.test(text)) {
+    return {
+      risk: 'low',
+      recommendation: '1회 승인 가능',
+      canApproveOnce: true,
+      canApproveSession: true,
+      warning: '세션 승인은 같은 종류의 안전한 명령이 반복될 때만 사용하세요.'
+    };
+  }
+  return {
+    risk: 'unknown',
+    recommendation: '직접 확인 필요',
+    canApproveOnce: false,
+    canApproveSession: false,
+    warning: '명령 내용을 파악하지 못했습니다. tmux 출력에서 직접 확인하세요.'
+  };
+}
+
+function extractApprovalBlock(output) {
+  return findStrictApprovalPromptBlock(output);
+}
+
+function cleanWorkingDirectory(block) {
+  const match = String(block || '').match(/(?:cwd|working directory|작업 디렉터리)\s*[:=]\s*([^\n]+)/i);
+  return match ? match[1].trim().slice(0, 260) : '-';
+}
+
+async function buildApprovalContext(windowName, step = null) {
+  const safeWindow = validateAiTmuxWindow(windowName);
+  const output = await captureRecentTmuxOutput(safeWindow, 180);
+  const rawBlock = extractApprovalBlock(output);
+  if (!rawBlock) {
+    return null;
+  }
+  const commandOrTarget = extractCommandOrTarget(rawBlock);
+  const risk = classifyApprovalRisk(rawBlock, commandOrTarget);
+  return {
+    window: safeWindow,
+    step,
+    type: approvalTypeFromBlock(rawBlock),
+    commandOrTarget: commandOrTarget || '확인 불가',
+    workingDirectory: cleanWorkingDirectory(rawBlock),
+    rawBlock,
+    ...risk,
+    summary: `${safeWindow === 'codex' ? 'Codex' : 'Claude'} 창에서 명령 실행 승인 요청이 감지되었습니다.`
+  };
+}
+
 async function refreshDetectedIssue(state) {
   if (!state || !ACTIVE_PIPELINE_STATES.has(state.status)) {
     return;
@@ -539,6 +815,13 @@ async function refreshDetectedIssue(state) {
   const issue = detectIssueFromOutput(output, targetWindow);
   if (!issue) {
     return;
+  }
+  if (issue.type === 'approval_required') {
+    issue.approvalContext = await buildApprovalContext(targetWindow, state.currentStep).catch(() => null);
+    if (!issue.approvalContext) {
+      return;
+    }
+    issue.summary = issue.approvalContext.summary;
   }
 
   state.detectedIssue = issue;
@@ -565,25 +848,24 @@ async function applyArtifactProgress(state) {
     return;
   }
 
-  for (const stage of PIPELINE_STAGES) {
-    const artifact = await findFirstExistingArtifact(state.projectDir, state.jobId, stage.artifacts);
-    const step = state.steps.find((item) => item.id === stage.id);
-    if (artifact && step && step.status === 'running') {
-      state.status = stage.state;
-      state.error = null;
-      state.detectedIssue = null;
-      setStep(state, stage.id, stage.label, 'succeeded', artifact.name);
-    }
-  }
-
   const current = stageById(state.currentStep);
   if (current) {
-    const artifact = await findFirstExistingArtifact(state.projectDir, state.jobId, current.artifacts);
-    if (artifact) {
+    const step = state.steps.find((item) => item.id === current.id);
+    const requirements = await allArtifactsExist(state.projectDir, state.jobId, current.artifacts, step?.startedAt || null);
+    if (requirements.ok) {
       state.status = current.state;
       state.error = null;
       state.detectedIssue = null;
-      setStep(state, current.id, current.label, 'succeeded', artifact.name);
+      setStep(state, current.id, current.label, 'succeeded', requirements.files.map((file) => file.name).join(', '));
+      if (current.id === 'codex-review-fix') {
+        state.status = 'review_changes_requested';
+        state.currentStep = null;
+        state.error = 'Codex가 리뷰 반영을 완료했습니다. Claude 재리뷰를 실행하세요.';
+      }
+      if (current.id === 'claude-review' || current.id === 'claude-re-review') {
+        await updateReviewSummary(state.projectDir, state.jobId, state);
+        applyReviewDecision(state);
+      }
     }
   }
 }
@@ -646,12 +928,58 @@ async function updateReviewSummary(projectDir, jobId, state) {
     return;
   }
   const content = await fs.readFile(artifact.path, 'utf8').catch(() => '');
-  const decisionLine = content.split(/\r?\n/).find((line) => /decision|verdict|approve|request changes|comment/i.test(line));
+  const decision = detectReviewDecision(content);
+  const decisionLine = content.split(/\r?\n/).find((line) => /decision|verdict|approve|request[_ -]?changes|block|승인|수정\s*요청|차단|보류/i.test(line));
   state.summary.review = {
     status: 'available',
     file: artifact.name,
-    decision: decisionLine ? decisionLine.trim() : null
+    decision,
+    decisionLine: decisionLine ? decisionLine.trim() : null
   };
+}
+
+function detectReviewDecision(content) {
+  const text = String(content || '');
+  if (/\bBLOCK\b|차단|보류/i.test(text)) {
+    return 'BLOCK';
+  }
+  if (/\bREQUEST[_ -]?CHANGES\b|수정\s*요청/i.test(text)) {
+    return 'REQUEST_CHANGES';
+  }
+  if (/\bAPPROVE\b|\bAPPROVED\b|승인/i.test(text)) {
+    return 'APPROVE';
+  }
+  return 'UNKNOWN';
+}
+
+function applyReviewDecision(state) {
+  const decision = state.summary.review.decision;
+  const now = new Date().toISOString();
+  if (decision === 'APPROVE') {
+    state.status = 'manual_final_approval_required';
+    state.currentStep = null;
+    state.finishedAt = now;
+    state.error = 'Claude 리뷰가 승인되었습니다. 이제 사람이 git diff를 확인하고 commit/PR 여부를 결정하세요.';
+    return;
+  }
+  if (decision === 'REQUEST_CHANGES') {
+    state.status = 'review_changes_requested';
+    state.currentStep = null;
+    state.finishedAt = now;
+    state.error = 'Claude가 수정 요청을 남겼습니다. Codex가 리뷰 내용을 반영해야 합니다.';
+    return;
+  }
+  if (decision === 'BLOCK') {
+    state.status = 'blocked';
+    state.currentStep = null;
+    state.finishedAt = now;
+    state.error = 'Claude가 작업을 차단했습니다. 요청 범위나 안전 조건을 수정해야 합니다.';
+    return;
+  }
+  state.status = 'manual_review_required';
+  state.currentStep = null;
+  state.finishedAt = now;
+  state.error = 'Claude 리뷰 결정을 확인할 수 없습니다. review.md에서 APPROVE, REQUEST_CHANGES, BLOCK 중 하나를 확인하세요.';
 }
 
 async function runPipeline(state, inputKo) {
@@ -679,11 +1007,11 @@ async function runPipeline(state, inputKo) {
       if (!sent.ok) {
         throw new Error(`${step.label} 실패: ${sent.message || sent.stderr || 'tmux 전송 실패'}`);
       }
-      const artifact = await waitForArtifact(projectDir, jobId, step.artifacts, state);
+      const artifacts = await waitForArtifacts(projectDir, jobId, step.artifacts, state);
       if (!ACTIVE_PIPELINE_STATES.has(state.status)) {
         return;
       }
-      if (!artifact) {
+      if (!artifacts) {
         markManualRequired(state, step.id, step.label);
         await refreshPipelineArtifacts(state);
         return;
@@ -691,7 +1019,7 @@ async function runPipeline(state, inputKo) {
       state.status = step.state;
       state.error = null;
       state.detectedIssue = null;
-      setStep(state, step.id, step.label, 'succeeded', artifact.name);
+      setStep(state, step.id, step.label, 'succeeded', artifacts.map((artifact) => artifact.name).join(', '));
       await refreshPipelineArtifacts(state);
 
       if (step.id === 'codex-implement') {
@@ -723,11 +1051,11 @@ async function runPipeline(state, inputKo) {
     if (!reviewed.ok) {
       throw new Error(`Claude 리뷰 전송 실패: ${reviewed.message || reviewed.stderr || 'tmux 전송 실패'}`);
     }
-    const reviewArtifact = await waitForArtifact(projectDir, jobId, reviewerStep.artifacts, state);
+    const reviewArtifacts = await waitForArtifacts(projectDir, jobId, reviewerStep.artifacts, state);
     if (!ACTIVE_PIPELINE_STATES.has(state.status)) {
       return;
     }
-    if (!reviewArtifact) {
+    if (!reviewArtifacts) {
       markManualRequired(state, reviewerStep.id, reviewerStep.label);
       await updateReviewSummary(projectDir, jobId, state);
       await refreshPipelineArtifacts(state);
@@ -736,13 +1064,10 @@ async function runPipeline(state, inputKo) {
     state.status = reviewerStep.state;
     state.error = null;
     state.detectedIssue = null;
-    setStep(state, reviewerStep.id, reviewerStep.label, 'succeeded', reviewArtifact.name);
+    setStep(state, reviewerStep.id, reviewerStep.label, 'succeeded', reviewArtifacts.map((artifact) => artifact.name).join(', '));
     await updateReviewSummary(projectDir, jobId, state);
     await refreshPipelineArtifacts(state);
-
-    state.status = 'succeeded';
-    state.currentStep = null;
-    state.finishedAt = new Date().toISOString();
+    applyReviewDecision(state);
   } catch (error) {
     state.status = 'failed';
     state.error = error.message || '파이프라인 실행 실패';
@@ -797,6 +1122,31 @@ function buildPrompt(role, projectDir, jobId, inputKo) {
       '',
       `Review the git diff saved at ${path.join(jobDir, 'local-diff.patch')} when present, ${path.join(jobDir, 'patch.md')}, and the approved request/plan.`,
       `Write the review into ${path.join(jobDir, 'review.md')} using the Claude review output format.`,
+      'The review must include exactly one decision marker: APPROVE, REQUEST_CHANGES, or BLOCK.',
+      'Do not commit, push, merge, deploy, or run arbitrary shell commands.'
+    ].join('\n');
+  }
+
+  if (role === 'codex-review-fix') {
+    return [
+      'Use prompts/codex-implementer.md.',
+      common,
+      '',
+      `Read ${path.join(jobDir, 'patch.md')}, ${path.join(jobDir, 'review.md')}, and the current git diff.`,
+      'Apply only the changes explicitly requested by Claude review. Do not expand scope.',
+      `Update ${path.join(jobDir, 'patch.md')} and write ${path.join(jobDir, 'status.md')} with what changed and which checks ran.`,
+      'Do not commit, push, merge, deploy, or change secrets, .env, auth, payment, production infra, or database migrations.'
+    ].join('\n');
+  }
+
+  if (role === 'claude-re-review') {
+    return [
+      'Use prompts/claude.md.',
+      common,
+      '',
+      `Re-review the updated git diff, ${path.join(jobDir, 'patch.md')}, ${path.join(jobDir, 'status.md')}, and the previous review in ${path.join(jobDir, 'review.md')}.`,
+      `Update ${path.join(jobDir, 'review.md')} with the new review result.`,
+      'The review must include exactly one decision marker: APPROVE, REQUEST_CHANGES, or BLOCK.',
       'Do not commit, push, merge, deploy, or run arbitrary shell commands.'
     ].join('\n');
   }
@@ -881,6 +1231,51 @@ function scheduleGuiRestart() {
 
 function handleError(res, error) {
   res.status(400).json({ ok: false, error: error.message || '요청을 처리할 수 없습니다.' });
+}
+
+function getOrCreatePipelineState(projectDir, jobId) {
+  const key = pipelineKey(projectDir, jobId);
+  let state = pipelineStates.get(key);
+  if (!state) {
+    state = createPipelineState(projectDir, jobId);
+    state.status = 'idle';
+    state.currentStep = null;
+    pipelineStates.set(key, state);
+  }
+  return state;
+}
+
+async function requireArtifacts(projectDir, jobId, names, message) {
+  const requirements = await allArtifactsExist(projectDir, jobId, names);
+  if (!requirements.ok) {
+    throw new Error(`${message} 누락: ${requirements.missing.join(', ')}`);
+  }
+}
+
+async function sendManualStage(projectDir, jobId, inputKo, stageId) {
+  const stage = stageById(stageId);
+  if (!stage) {
+    throw new Error('허용되지 않은 단계입니다.');
+  }
+  const state = getOrCreatePipelineState(projectDir, jobId);
+  if (ACTIVE_PIPELINE_STATES.has(state.status)) {
+    throw new Error('이미 실행 중인 단계가 있습니다.');
+  }
+  state.status = stage.state;
+  state.error = null;
+  state.detectedIssue = null;
+  state.finishedAt = null;
+  setStep(state, stage.id, stage.label, 'running');
+  const result = await sendToWindow(stage.role, projectDir, jobId, inputKo);
+  await appendPipelineLog(projectDir, jobId, stage.id, `${result.stdout || ''}${result.stderr || ''}${result.message || ''}`);
+  if (!result.ok) {
+    state.status = 'failed';
+    state.error = result.message || result.stderr || 'tmux 전송 실패';
+    state.finishedAt = new Date().toISOString();
+    setStep(state, stage.id, stage.label, 'failed', state.error);
+  }
+  await refreshPipelineArtifacts(state);
+  return { state, result };
 }
 
 app.get('/api/status', async (req, res) => {
@@ -1004,11 +1399,11 @@ app.get('/api/pipeline/status', async (req, res) => {
       if (!ACTIVE_PIPELINE_STATES.has(state.status)) {
         await updateReviewSummary(projectDir, jobId, state);
       }
-      res.json(publicPipelineState(state));
+      res.json(await publicPipelineState(state));
       return;
     }
 
-    res.json(publicIdlePipelineState(projectDir, jobId));
+    res.json(await publicIdlePipelineState(projectDir, jobId));
   } catch (error) {
     handleError(res, error);
   }
@@ -1044,6 +1439,20 @@ app.get('/api/tmux/output', async (req, res) => {
       window: windowName,
       output: redactedOutput(result.stdout || result.stderr || result.message)
     });
+  } catch (error) {
+    handleError(res, error);
+  }
+});
+
+app.get('/api/tmux/approval-context', async (req, res) => {
+  try {
+    const windowName = validateAiTmuxWindow(req.query.window);
+    const context = await buildApprovalContext(windowName, typeof req.query.step === 'string' ? req.query.step : null);
+    if (!context) {
+      res.status(404).json({ ok: false, error: '실제 승인 프롬프트를 찾지 못했습니다.' });
+      return;
+    }
+    res.json({ ok: true, approvalContext: context });
   } catch (error) {
     handleError(res, error);
   }
@@ -1124,15 +1533,35 @@ app.post('/api/service/restart-gui', async (req, res) => {
 for (const [endpoint, role] of [
   ['/api/send/claude-plan', 'claude-plan'],
   ['/api/send/codex-implement', 'codex-implement'],
-  ['/api/send/claude-review', 'claude-review']
+  ['/api/send/claude-review', 'claude-review'],
+  ['/api/send/codex-review-fix', 'codex-review-fix'],
+  ['/api/send/claude-re-review', 'claude-re-review']
 ]) {
   app.post(endpoint, async (req, res) => {
     try {
       const projectDir = await resolveProjectDir(req.body.projectDir);
       const jobId = validateJobId(req.body.jobId);
       const inputKo = typeof req.body.inputKo === 'string' ? req.body.inputKo : '';
-      const result = await sendToWindow(role, projectDir, jobId, inputKo);
-      res.json(cleanOutput(result));
+      if (role === 'codex-implement') {
+        await requireArtifacts(projectDir, jobId, ['plan.md', 'codex-task.md'], 'Claude 계획이 아직 완료되지 않았습니다. plan.md와 codex-task.md가 생성된 뒤 Codex를 실행할 수 있습니다.');
+      }
+      if (role === 'claude-review') {
+        await requireArtifacts(projectDir, jobId, ['patch.md'], 'patch.md가 생성된 뒤 Claude 리뷰를 실행할 수 있습니다.');
+      }
+      if (role === 'codex-review-fix') {
+        await requireArtifacts(projectDir, jobId, ['patch.md', 'review.md'], 'patch.md와 review.md가 생성된 뒤 Codex 리뷰 반영을 실행할 수 있습니다.');
+      }
+      if (role === 'claude-re-review') {
+        await requireArtifacts(projectDir, jobId, ['patch.md', 'review.md', 'status.md'], 'Codex 리뷰 반영 상태가 생성된 뒤 Claude 재리뷰를 실행할 수 있습니다.');
+      }
+      const stage = stageById(role);
+      const { state, result } = stage
+        ? await sendManualStage(projectDir, jobId, inputKo, role)
+        : { state: null, result: await sendToWindow(role, projectDir, jobId, inputKo) };
+      res.json({
+        ...cleanOutput(result),
+        pipeline: state ? (await publicPipelineState(state)).status : null
+      });
     } catch (error) {
       handleError(res, error);
     }

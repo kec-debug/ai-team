@@ -9,6 +9,7 @@ const inputKoEl = document.querySelector('#inputKo');
 const outputEl = document.querySelector('#output');
 const artifactListEl = document.querySelector('#artifactList');
 const runPipelineButton = document.querySelector('#runPipeline');
+const sendButtons = [...document.querySelectorAll('[data-send]')];
 const pipelineStateEl = document.querySelector('#pipelineState');
 const pipelineJobIdEl = document.querySelector('#pipelineJobId');
 const pipelineStageEl = document.querySelector('#pipelineStage');
@@ -31,6 +32,15 @@ const approvalModalEl = document.querySelector('#approvalModal');
 const approvalModalStepEl = document.querySelector('#approvalModalStep');
 const approvalModalWindowEl = document.querySelector('#approvalModalWindow');
 const approvalModalSummaryEl = document.querySelector('#approvalModalSummary');
+const approvalModalTypeEl = document.querySelector('#approvalModalType');
+const approvalModalCommandEl = document.querySelector('#approvalModalCommand');
+const approvalModalCwdEl = document.querySelector('#approvalModalCwd');
+const approvalModalRiskEl = document.querySelector('#approvalModalRisk');
+const approvalModalRecommendationEl = document.querySelector('#approvalModalRecommendation');
+const approvalModalRawEl = document.querySelector('#approvalModalRaw');
+const approvalModalRiskWarningEl = document.querySelector('#approvalModalRiskWarning');
+const approvalModalApproveOnceEl = document.querySelector('#approvalModalApproveOnce');
+const approvalModalApproveSessionEl = document.querySelector('#approvalModalApproveSession');
 const aiControlButtons = [
   document.querySelector('#approveOnce'),
   document.querySelector('#approveSession'),
@@ -59,8 +69,18 @@ const finalPipelineStates = new Set([
   'failed',
   'blocked',
   'manual_review_required',
+  'review_approved',
+  'review_changes_requested',
+  'manual_final_approval_required',
   'idle'
 ]);
+const stageWindows = {
+  'claude-plan': 'claude',
+  'codex-implement': 'codex',
+  'claude-review': 'claude',
+  'codex-review-fix': 'codex',
+  'claude-re-review': 'claude'
+};
 
 projectDirEl.value = state.projectDir;
 jobIdEl.value = state.jobId;
@@ -183,6 +203,10 @@ runPipelineButton.addEventListener('click', async () => {
 });
 
 document.querySelector('#pipelineStatus').addEventListener('click', refreshPipelineStatus);
+document.querySelector('#finalManualReview').addEventListener('click', () => {
+  writeOutput('최종 확인', 'Claude 리뷰가 승인되었습니다. 이제 사람이 git diff를 확인하고 commit/PR 여부를 결정하세요.');
+  refreshPipelineStatus();
+});
 
 document.querySelector('#resetPipeline').addEventListener('click', async () => {
   const result = await runAction('파이프라인 상태 초기화', () => requestJson('/api/pipeline/reset', {
@@ -370,6 +394,7 @@ function renderPipelineStatus(status) {
     summaryDiffEl.textContent = '-';
     summaryReviewEl.textContent = '-';
     runPipelineButton.disabled = false;
+    updateSendButtonGates(null);
     return;
   }
 
@@ -389,6 +414,7 @@ function renderPipelineStatus(status) {
   pipelineTargetWindowEl.textContent = pipeline.targetWindow || '-';
   pipelineWaitingApprovalEl.textContent = pipeline.waitingApproval ? '예' : '아니오';
   renderDetectedIssue(approvalRequest ? null : pipeline.detectedIssue);
+  updateSendButtonGates(pipeline);
 
   if (pipeline.targetWindow && tmuxWindowEl.value !== pipeline.targetWindow) {
     tmuxWindowEl.value = pipeline.targetWindow;
@@ -410,8 +436,9 @@ function renderPipelineStatus(status) {
   } else {
     currentApprovalRequest = null;
     closeApprovalModal();
-    pipelineGuidanceEl.hidden = true;
-    pipelineGuidanceEl.textContent = '';
+    const requirementsText = renderRequirementsText(pipeline.requirements);
+    pipelineGuidanceEl.hidden = !requirementsText;
+    pipelineGuidanceEl.textContent = requirementsText;
     approvalInlinePromptEl.hidden = true;
   }
 
@@ -464,6 +491,47 @@ function renderPipelineStatus(status) {
   summaryNextActionEl.textContent = pipeline.nextAction || '-';
 }
 
+function renderRequirementsText(requirements) {
+  if (!requirements || !requirements.files || requirements.files.length === 0) {
+    return '';
+  }
+  const lines = [
+    `필수 파일 (${requirements.label || '현재 단계'}):`,
+    ...requirements.files.map((file) => `- ${file.name}: ${file.exists ? 'ready' : 'missing'}`),
+    `다음 단계 가능: ${requirements.nextStageAllowed ? 'yes' : 'no'}`
+  ];
+  return lines.join('\n');
+}
+
+function hasArtifact(pipeline, name) {
+  return (pipeline?.artifacts || []).some((artifact) => (artifact.name || artifact) === name);
+}
+
+function updateSendButtonGates(pipeline) {
+  sendButtons.forEach((button) => {
+    const target = button.dataset.send;
+    let disabled = false;
+    let title = '';
+    if (!pipeline) {
+      disabled = false;
+    } else if (target === 'codex-implement') {
+      disabled = !hasArtifact(pipeline, 'plan.md') || !hasArtifact(pipeline, 'codex-task.md');
+      title = disabled ? 'Claude 계획이 아직 완료되지 않았습니다. plan.md와 codex-task.md가 생성된 뒤 Codex를 실행할 수 있습니다.' : '';
+    } else if (target === 'claude-review') {
+      disabled = !hasArtifact(pipeline, 'patch.md');
+      title = disabled ? 'patch.md가 생성된 뒤 Claude 리뷰를 실행할 수 있습니다.' : '';
+    } else if (target === 'codex-review-fix') {
+      disabled = pipeline.state !== 'review_changes_requested';
+      title = disabled ? 'Claude가 수정 요청을 남긴 뒤 실행할 수 있습니다.' : '';
+    } else if (target === 'claude-re-review') {
+      disabled = !hasArtifact(pipeline, 'status.md');
+      title = disabled ? 'Codex 리뷰 반영 후 status.md가 생성된 뒤 실행할 수 있습니다.' : '';
+    }
+    button.disabled = disabled;
+    button.title = title;
+  });
+}
+
 function getApprovalRequest(status, pipeline) {
   const issue = pipeline.detectedIssue || {};
   const isApproval = pipeline.state === 'approval_required' || issue.type === 'approval_required';
@@ -472,16 +540,18 @@ function getApprovalRequest(status, pipeline) {
   }
 
   const targetWindow = issue.window || pipeline.targetWindow;
-  if (!['claude', 'codex'].includes(targetWindow)) {
+  const stageTargetWindow = stageWindows[pipeline.step] || pipeline.targetWindow || targetWindow;
+  if (!['claude', 'codex'].includes(stageTargetWindow)) {
     return null;
   }
 
   const jobId = status.jobId || jobIdEl.value.trim() || '-';
   const step = pipeline.step || '-';
-  const rawSummary = issue.summary || pipeline.message || '';
-  const summary = cleanApprovalSummary(targetWindow);
-  const key = `${jobId}:${step}:${targetWindow}:${rawSummary || summary}`;
-  return { key, step, targetWindow, summary };
+  const approvalContext = issue.approvalContext || null;
+  const rawSummary = approvalContext?.rawBlock || issue.summary || pipeline.message || '';
+  const summary = approvalContext?.summary || cleanApprovalSummary(stageTargetWindow);
+  const key = `${jobId}:${step}:${stageTargetWindow}:${rawSummary || summary}`;
+  return { key, step, targetWindow: stageTargetWindow, summary, approvalContext };
 }
 
 function cleanApprovalSummary(windowName) {
@@ -495,10 +565,41 @@ function openApprovalModal(request, force) {
     return;
   }
   lastApprovalKey = request.key;
-  approvalModalStepEl.textContent = request.step || '-';
-  approvalModalWindowEl.textContent = request.targetWindow || '-';
-  approvalModalSummaryEl.textContent = request.summary || '-';
+  renderApprovalContext(request, request.approvalContext);
   approvalModalEl.hidden = false;
+  if (!request.approvalContext) {
+    loadApprovalContext(request);
+  }
+}
+
+async function loadApprovalContext(request) {
+  try {
+    const result = await requestJson(`/api/tmux/approval-context?window=${encodeURIComponent(request.targetWindow)}&step=${encodeURIComponent(request.step || '')}`);
+    if (!currentApprovalRequest || currentApprovalRequest.key !== request.key) {
+      return;
+    }
+    currentApprovalRequest.approvalContext = result.approvalContext;
+    renderApprovalContext(currentApprovalRequest, result.approvalContext);
+  } catch (error) {
+    approvalModalRawEl.textContent = error.message;
+  }
+}
+
+function renderApprovalContext(request, context) {
+  const risk = context?.risk || 'unknown';
+  approvalModalStepEl.textContent = request.step || context?.step || '-';
+  approvalModalWindowEl.textContent = request.targetWindow || context?.window || '-';
+  approvalModalSummaryEl.textContent = context?.summary || request.summary || '-';
+  approvalModalTypeEl.textContent = context?.type || 'unknown';
+  approvalModalCommandEl.textContent = context?.commandOrTarget || '확인 불가';
+  approvalModalCwdEl.textContent = context?.workingDirectory || '-';
+  approvalModalRiskEl.textContent = risk;
+  approvalModalRiskEl.dataset.risk = risk;
+  approvalModalRecommendationEl.textContent = context?.recommendation || '직접 확인 필요';
+  approvalModalRawEl.textContent = context?.rawBlock || '원문을 불러오는 중입니다.';
+  approvalModalRiskWarningEl.textContent = context?.warning || '명령 내용을 파악하지 못했습니다. tmux 출력에서 직접 확인하세요.';
+  approvalModalApproveOnceEl.disabled = !context?.canApproveOnce;
+  approvalModalApproveSessionEl.disabled = !context?.canApproveSession;
 }
 
 function closeApprovalModal() {
@@ -508,6 +609,10 @@ function closeApprovalModal() {
 async function sendApprovalModalAction(endpoint) {
   if (!currentApprovalRequest || !['claude', 'codex'].includes(currentApprovalRequest.targetWindow)) {
     writeOutput('승인 명령 실패', '승인 대상 창을 확인할 수 없습니다.');
+    return;
+  }
+  if (!approvalEndpointAllowed(endpoint, currentApprovalRequest.approvalContext)) {
+    writeOutput('승인 명령 차단', currentApprovalRequest.approvalContext?.warning || '명령 내용을 파악하지 못했습니다. tmux 출력에서 직접 확인하세요.');
     return;
   }
 
@@ -524,6 +629,16 @@ async function sendApprovalModalAction(endpoint) {
   }
 }
 
+function approvalEndpointAllowed(endpoint, context) {
+  if (endpoint.endsWith('/approve-once')) {
+    return Boolean(context?.canApproveOnce);
+  }
+  if (endpoint.endsWith('/approve-session')) {
+    return Boolean(context?.canApproveSession);
+  }
+  return true;
+}
+
 function normalizePipelineStatus(payload) {
   if (payload && payload.status && typeof payload.status === 'object') {
     return {
@@ -534,6 +649,7 @@ function normalizePipelineStatus(payload) {
       waitingApproval: Boolean(payload.status.waitingApproval),
       detectedIssue: payload.status.detectedIssue || null,
       artifacts: payload.status.artifacts || [],
+      requirements: payload.status.requirements || null,
       gitDiff: payload.status.gitDiff || '-',
       reviewStatus: payload.status.reviewStatus || '-',
       nextAction: payload.status.nextAction || '-'
@@ -548,6 +664,7 @@ function normalizePipelineStatus(payload) {
     waitingApproval: false,
     detectedIssue: null,
     artifacts: payload && payload.artifacts ? payload.artifacts : [],
+    requirements: null,
     gitDiff: '-',
     reviewStatus: '-',
     nextAction: '-'
@@ -623,6 +740,10 @@ async function sendTmuxControl(title, endpoint) {
   const selected = tmuxWindowEl.options[tmuxWindowEl.selectedIndex];
   if (selected && selected.dataset.aiRole === 'false') {
     writeOutput(`${title} 실패`, 'Manual Shell(git-shell)은 비AI 창입니다. 승인/거절 키 입력은 Claude 또는 Codex 창에서만 사용하세요.');
+    return null;
+  }
+  if (currentApprovalRequest && currentApprovalRequest.targetWindow === windowName && !approvalEndpointAllowed(endpoint, currentApprovalRequest.approvalContext)) {
+    writeOutput(`${title} 차단`, currentApprovalRequest.approvalContext?.warning || '명령 내용을 파악하지 못했습니다. tmux 출력에서 직접 확인하세요.');
     return null;
   }
   const result = await runAction(title, () => requestJson(endpoint, {
