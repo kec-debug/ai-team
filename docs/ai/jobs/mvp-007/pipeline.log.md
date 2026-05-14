@@ -1,0 +1,1479 @@
+
+## 2026-05-14T09:48:31.637Z — create-job
+
+```
+Ensured job directory: /root/ai-dev-center/projects/ai-team/docs/ai/jobs/mvp-007
+```
+
+## 2026-05-14T09:48:31.637Z — save-input
+
+```
+Saved: /root/ai-dev-center/projects/ai-team/docs/ai/jobs/mvp-007/request.ko.md
+```
+
+## 2026-05-14T09:48:31.655Z — claude-plan
+
+```
+(no output)
+```
+
+## 2026-05-14T09:53:11.773Z — codex-implement
+
+```
+(no output)
+```
+
+## 2026-05-14T09:56:21.877Z — save-diff
+
+```
+diff --git a/docs/ai/jobs/mvp-004/request.ko.md b/docs/ai/jobs/mvp-004/request.ko.md
+index 7d9ecf1..dcfaa5c 100644
+--- a/docs/ai/jobs/mvp-004/request.ko.md
++++ b/docs/ai/jobs/mvp-004/request.ko.md
+@@ -1,10 +1,74 @@
+-# 작업 요청
++# 작업 ID
++mvp-004
+ 
+-GUI 파이프라인이 Claude 계획 완료 전에 Codex 단계로 넘어가는 문제를 수정한다.
++# 작업명
++AI 개발팀 GUI 화면 배치 개선
+ 
+-Claude 계획 단계는 plan.md와 codex-task.md가 생성되어야 완료된 것으로 본다.
+-Codex 구현 단계는 patch.md가 생성되어야 완료된 것으로 본다.
+-Claude 리뷰 단계는 review.md가 생성되어야 완료된 것으로 본다.
++현재 AI 개발팀 브라우저 GUI에서 화면 배치가 불편하다.
+ 
+-전체 파이프라인 버튼은 각 단계의 산출물 파일을 확인한 뒤 다음 단계로 넘어가야 한다.
+-승인 대기, 차단, 실패 상태가 감지되면 다음 단계로 넘어가면 안 된다.
++문제점:
++1. 파이프라인 상태 영역이 너무 위에 있어서 핵심 제어 버튼과 시선 흐름이 맞지 않는다.
++2. 승인 / 서비스 제어 / 실시간 출력 영역이 아래쪽에 있어 잘 안 보인다.
++3. 작업 설정 칸이 너무 길어서 화면을 많이 차지한다.
++4. 실제 작업 중에는 승인 버튼, 서비스 제어, 실시간 출력이 더 중요하므로 위쪽에서 바로 보여야 한다.
++
++원하는 변경사항:
++
++1. “파이프라인 상태” 영역을 “Claude → Codex → Claude 전체 실행” 버튼 아래로 내려줘.
++
++2. 아래 영역들을 상단 쪽으로 올려줘.
++   - 승인 / 계속 진행
++   - 거절
++   - 중단
++   - 서비스 제어
++   - 실시간 출력
++
++3. 작업 설정 영역을 더 짧고 컴팩트하게 만들어줘.
++   - 입력칸 높이를 줄여줘.
++   - 필요하면 접기/펼치기 형태로 만들어줘.
++   - 화면에서 너무 많은 공간을 차지하지 않게 해줘.
++
++4. 화면 우선순위를 아래 순서로 재배치해줘.
++   - 상단: 작업 ID / 작업 요청 입력 / 주요 실행 버튼
++   - 그 아래: 승인 / 서비스 제어 / 실시간 출력
++   - 그 아래: 파이프라인 상태
++   - 그 아래: 작업 설정 / 고급 설정 / 산출물 목록
++
++5. Claude + Codex 2-role 구조는 유지해줘.
++   - Gemini Manager, Claude Architect, Claude Reviewer, Git Shell을 다시 노출하지 마.
++   - Claude 계획 생성
++   - Codex 구현 실행
++   - Claude 리뷰 실행
++   - Claude → Codex → Claude 전체 실행
++   이 버튼 구조는 유지해줘.
++
++6. git status와 git diff는 수동 유틸리티 버튼으로만 유지해줘.
++   - commit, push, merge는 자동화하지 마.
++
++7. 반응형 화면도 깨지지 않게 해줘.
++   - 작은 화면에서도 실시간 출력과 승인 버튼이 잘 보여야 한다.
++
++수정 대상:
++- web/public/index.html
++- web/public/app.js
++- web/public/style.css
++- 필요하면 web/server.js
++- README.md 또는 docs/ai/CLAUDE_CODEX_WORKFLOW.md는 변경 내용이 있으면 최소한만 업데이트
++
++금지:
++- 주식 페이퍼매매 로직은 건드리지 마.
++- secrets, .env, auth, payment, production infra, database migrations는 건드리지 마.
++- 임의 shell 명령 입력 기능은 만들지 마.
++- git commit, push, merge는 자동화하지 마.
++
++검증:
++- node --check web/server.js
++- node --check web/public/app.js
++- git diff --stat
++
++완료 후:
++- 어떤 UI 영역을 어디로 옮겼는지
++- 작업 설정 영역을 어떻게 줄였는지
++- Claude + Codex 구조가 유지되는지
++- 테스트 결과가 무엇인지
++patch.md에 정리해줘.
+\ No newline at end of file
+diff --git a/web/public/app.js b/web/public/app.js
+index f27f460..d9fc2c2 100644
+--- a/web/public/app.js
++++ b/web/public/app.js
+@@ -9,6 +9,7 @@ const inputKoEl = document.querySelector('#inputKo');
+ const outputEl = document.querySelector('#output');
+ const artifactListEl = document.querySelector('#artifactList');
+ const runPipelineButton = document.querySelector('#runPipeline');
++const sendButtons = [...document.querySelectorAll('[data-send]')];
+ const pipelineStateEl = document.querySelector('#pipelineState');
+ const pipelineJobIdEl = document.querySelector('#pipelineJobId');
+ const pipelineStageEl = document.querySelector('#pipelineStage');
+@@ -31,6 +32,15 @@ const approvalModalEl = document.querySelector('#approvalModal');
+ const approvalModalStepEl = document.querySelector('#approvalModalStep');
+ const approvalModalWindowEl = document.querySelector('#approvalModalWindow');
+ const approvalModalSummaryEl = document.querySelector('#approvalModalSummary');
++const approvalModalTypeEl = document.querySelector('#approvalModalType');
++const approvalModalCommandEl = document.querySelector('#approvalModalCommand');
++const approvalModalCwdEl = document.querySelector('#approvalModalCwd');
++const approvalModalRiskEl = document.querySelector('#approvalModalRisk');
++const approvalModalRecommendationEl = document.querySelector('#approvalModalRecommendation');
++const approvalModalRawEl = document.querySelector('#approvalModalRaw');
++const approvalModalRiskWarningEl = document.querySelector('#approvalModalRiskWarning');
++const approvalModalApproveOnceEl = document.querySelector('#approvalModalApproveOnce');
++const approvalModalApproveSessionEl = document.querySelector('#approvalModalApproveSession');
+ const aiControlButtons = [
+   document.querySelector('#approveOnce'),
+   document.querySelector('#approveSession'),
+@@ -59,8 +69,18 @@ const finalPipelineStates = new Set([
+   'failed',
+   'blocked',
+   'manual_review_required',
++  'review_approved',
++  'review_changes_requested',
++  'manual_final_approval_required',
+   'idle'
+ ]);
++const stageWindows = {
++  'claude-plan': 'claude',
++  'codex-implement': 'codex',
++  'claude-review': 'claude',
++  'codex-review-fix': 'codex',
++  'claude-re-review': 'claude'
++};
+ 
+ projectDirEl.value = state.projectDir;
+ jobIdEl.value = state.jobId;
+@@ -183,6 +203,10 @@ runPipelineButton.addEventListener('click', async () => {
+ });
+ 
+ document.querySelector('#pipelineStatus').addEventListener('click', refreshPipelineStatus);
++document.querySelector('#finalManualReview').addEventListener('click', () => {
++  writeOutput('최종 확인', 'Claude 리뷰가 승인되었습니다. 이제 사람이 git diff를 확인하고 commit/PR 여부를 결정하세요.');
++  refreshPipelineStatus();
++});
+ 
+ document.querySelector('#resetPipeline').addEventListener('click', async () => {
+   const result = await runAction('파이프라인 상태 초기화', () => requestJson('/api/pipeline/reset', {
+@@ -370,6 +394,7 @@ function renderPipelineStatus(status) {
+     summaryDiffEl.textContent = '-';
+     summaryReviewEl.textContent = '-';
+     runPipelineButton.disabled = false;
++    updateSendButtonGates(null);
+     return;
+   }
+ 
+@@ -389,6 +414,7 @@ function renderPipelineStatus(status) {
+   pipelineTargetWindowEl.textContent = pipeline.targetWindow || '-';
+   pipelineWaitingApprovalEl.textContent = pipeline.waitingApproval ? '예' : '아니오';
+   renderDetectedIssue(approvalRequest ? null : pipeline.detectedIssue);
++  updateSendButtonGates(pipeline);
+ 
+   if (pipeline.targetWindow && tmuxWindowEl.value !== pipeline.targetWindow) {
+     tmuxWindowEl.value = pipeline.targetWindow;
+@@ -410,8 +436,9 @@ function renderPipelineStatus(status) {
+   } else {
+     currentApprovalRequest = null;
+     closeApprovalModal();
+-    pipelineGuidanceEl.hidden = true;
+-    pipelineGuidanceEl.textContent = '';
++    const requirementsText = renderRequirementsText(pipeline.requirements);
++    pipelineGuidanceEl.hidden = !requirementsText;
++    pipelineGuidanceEl.textContent = requirementsText;
+     approvalInlinePromptEl.hidden = true;
+   }
+ 
+@@ -464,6 +491,47 @@ function renderPipelineStatus(status) {
+   summaryNextActionEl.textContent = pipeline.nextAction || '-';
+ }
+ 
++function renderRequirementsText(requirements) {
++  if (!requirements || !requirements.files || requirements.files.length === 0) {
++    return '';
++  }
++  const lines = [
++    `필수 파일 (${requirements.label || '현재 단계'}):`,
++    ...requirements.files.map((file) => `- ${file.name}: ${file.exists ? 'ready' : 'missing'}`),
++    `다음 단계 가능: ${requirements.nextStageAllowed ? 'yes' : 'no'}`
++  ];
++  return lines.join('\n');
++}
++
++function hasArtifact(pipeline, name) {
++  return (pipeline?.artifacts || []).some((artifact) => (artifact.name || artifact) === name);
++}
++
++function updateSendButtonGates(pipeline) {
++  sendButtons.forEach((button) => {
++    const target = button.dataset.send;
++    let disabled = false;
++    let title = '';
++    if (!pipeline) {
++      disabled = false;
++    } else if (target === 'codex-implement') {
++      disabled = !hasArtifact(pipeline, 'plan.md') || !hasArtifact(pipeline, 'codex-task.md');
++      title = disabled ? 'Claude 계획이 아직 완료되지 않았습니다. plan.md와 codex-task.md가 생성된 뒤 Codex를 실행할 수 있습니다.' : '';
++    } else if (target === 'claude-review') {
++      disabled = !hasArtifact(pipeline, 'patch.md');
++      title = disabled ? 'patch.md가 생성된 뒤 Claude 리뷰를 실행할 수 있습니다.' : '';
++    } else if (target === 'codex-review-fix') {
++      disabled = pipeline.state !== 'review_changes_requested';
++      title = disabled ? 'Claude가 수정 요청을 남긴 뒤 실행할 수 있습니다.' : '';
++    } else if (target === 'claude-re-review') {
++      disabled = !hasArtifact(pipeline, 'status.md');
++      title = disabled ? 'Codex 리뷰 반영 후 status.md가 생성된 뒤 실행할 수 있습니다.' : '';
++    }
++    button.disabled = disabled;
++    button.title = title;
++  });
++}
++
+ function getApprovalRequest(status, pipeline) {
+   const issue = pipeline.detectedIssue || {};
+   const isApproval = pipeline.state === 'approval_required' || issue.type === 'approval_required';
+@@ -472,16 +540,18 @@ function getApprovalRequest(status, pipeline) {
+   }
+ 
+   const targetWindow = issue.window || pipeline.targetWindow;
+-  if (!['claude', 'codex'].includes(targetWindow)) {
++  const stageTargetWindow = stageWindows[pipeline.step] || pipeline.targetWindow || targetWindow;
++  if (!['claude', 'codex'].includes(stageTargetWindow)) {
+     return null;
+   }
+ 
+   const jobId = status.jobId || jobIdEl.value.trim() || '-';
+   const step = pipeline.step || '-';
+-  const rawSummary = issue.summary || pipeline.message || '';
+-  const summary = cleanApprovalSummary(targetWindow);
+-  const key = `${jobId}:${step}:${targetWindow}:${rawSummary || summary}`;
+-  return { key, step, targetWindow, summary };
++  const approvalContext = issue.approvalContext || null;
++  const rawSummary = approvalContext?.rawBlock || issue.summary || pipeline.message || '';
++  const summary = approvalContext?.summary || cleanApprovalSummary(stageTargetWindow);
++  const key = `${jobId}:${step}:${stageTargetWindow}:${rawSummary || summary}`;
++  return { key, step, targetWindow: stageTargetWindow, summary, approvalContext };
+ }
+ 
+ function cleanApprovalSummary(windowName) {
+@@ -495,10 +565,41 @@ function openApprovalModal(request, force) {
+     return;
+   }
+   lastApprovalKey = request.key;
+-  approvalModalStepEl.textContent = request.step || '-';
+-  approvalModalWindowEl.textContent = request.targetWindow || '-';
+-  approvalModalSummaryEl.textContent = request.summary || '-';
++  renderApprovalContext(request, request.approvalContext);
+   approvalModalEl.hidden = false;
++  if (!request.approvalContext) {
++    loadApprovalContext(request);
++  }
++}
++
++async function loadApprovalContext(request) {
++  try {
++    const result = await requestJson(`/api/tmux/approval-context?window=${encodeURIComponent(request.targetWindow)}&step=${encodeURIComponent(request.step || '')}`);
++    if (!currentApprovalRequest || currentApprovalRequest.key !== request.key) {
++      return;
++    }
++    currentApprovalRequest.approvalContext = result.approvalContext;
++    renderApprovalContext(currentApprovalRequest, result.approvalContext);
++  } catch (error) {
++    approvalModalRawEl.textContent = error.message;
++  }
++}
++
++function renderApprovalContext(request, context) {
++  const risk = context?.risk || 'unknown';
++  approvalModalStepEl.textContent = request.step || context?.step || '-';
++  approvalModalWindowEl.textContent = request.targetWindow || context?.window || '-';
++  approvalModalSummaryEl.textContent = context?.summary || request.summary || '-';
++  approvalModalTypeEl.textContent = context?.type || 'unknown';
++  approvalModalCommandEl.textContent = context?.commandOrTarget || '확인 불가';
++  approvalModalCwdEl.textContent = context?.workingDirectory || '-';
++  approvalModalRiskEl.textContent = risk;
++  approvalModalRiskEl.dataset.risk = risk;
++  approvalModalRecommendationEl.textContent = context?.recommendation || '직접 확인 필요';
++  approvalModalRawEl.textContent = context?.rawBlock || '원문을 불러오는 중입니다.';
++  approvalModalRiskWarningEl.textContent = context?.warning || '명령 내용을 파악하지 못했습니다. tmux 출력에서 직접 확인하세요.';
++  approvalModalApproveOnceEl.disabled = !context?.canApproveOnce;
++  approvalModalApproveSessionEl.disabled = !context?.canApproveSession;
+ }
+ 
+ function closeApprovalModal() {
+@@ -510,6 +611,10 @@ async function sendApprovalModalAction(endpoint) {
+     writeOutput('승인 명령 실패', '승인 대상 창을 확인할 수 없습니다.');
+     return;
+   }
++  if (!approvalEndpointAllowed(endpoint, currentApprovalRequest.approvalContext)) {
++    writeOutput('승인 명령 차단', currentApprovalRequest.approvalContext?.warning || '명령 내용을 파악하지 못했습니다. tmux 출력에서 직접 확인하세요.');
++    return;
++  }
+ 
+   try {
+     await requestJson(endpoint, {
+@@ -524,6 +629,16 @@ async function sendApprovalModalAction(endpoint) {
+   }
+ }
+ 
++function approvalEndpointAllowed(endpoint, context) {
++  if (endpoint.endsWith('/approve-once')) {
++    return Boolean(context?.canApproveOnce);
++  }
++  if (endpoint.endsWith('/approve-session')) {
++    return Boolean(context?.canApproveSession);
++  }
++  return true;
++}
++
+ function normalizePipelineStatus(payload) {
+   if (payload && payload.status && typeof payload.status === 'object') {
+     return {
+@@ -534,6 +649,7 @@ function normalizePipelineStatus(payload) {
+       waitingApproval: Boolean(payload.status.waitingApproval),
+       detectedIssue: payload.status.detectedIssue || null,
+       artifacts: payload.status.artifacts || [],
++      requirements: payload.status.requirements || null,
+       gitDiff: payload.status.gitDiff || '-',
+       reviewStatus: payload.status.reviewStatus || '-',
+       nextAction: payload.status.nextAction || '-'
+@@ -548,6 +664,7 @@ function normalizePipelineStatus(payload) {
+     waitingApproval: false,
+     detectedIssue: null,
+     artifacts: payload && payload.artifacts ? payload.artifacts : [],
++    requirements: null,
+     gitDiff: '-',
+     reviewStatus: '-',
+     nextAction: '-'
+@@ -625,6 +742,10 @@ async function sendTmuxControl(title, endpoint) {
+     writeOutput(`${title} 실패`, 'Manual Shell(git-shell)은 비AI 창입니다. 승인/거절 키 입력은 Claude 또는 Codex 창에서만 사용하세요.');
+     return null;
+   }
++  if (currentApprovalRequest && currentApprovalRequest.targetWindow === windowName && !approvalEndpointAllowed(endpoint, currentApprovalRequest.approvalContext)) {
++    writeOutput(`${title} 차단`, currentApprovalRequest.approvalContext?.warning || '명령 내용을 파악하지 못했습니다. tmux 출력에서 직접 확인하세요.');
++    return null;
++  }
+   const result = await runAction(title, () => requestJson(endpoint, {
+     method: 'POST',
+     body: JSON.stringify({ window: windowName })
+diff --git a/web/public/index.html b/web/public/index.html
+index a02de7a..60b76f9 100644
+--- a/web/public/index.html
++++ b/web/public/index.html
+@@ -16,42 +16,55 @@
+     </header>
+ 
+     <main class="layout">
+-      <section class="panel setup">
+-        <h2>작업 설정</h2>
+-        <label>
+-          프로젝트 경로
+-          <input id="projectDir" type="text" autocomplete="off" spellcheck="false">
+-        </label>
++      <section class="panel quick-actions">
++        <h2>핵심 실행</h2>
+         <label>
+           작업 ID
+           <input id="jobId" type="text" value="mvp-001" autocomplete="off" spellcheck="false">
+         </label>
+         <label>
+           한국어 작업 요청
+-          <textarea id="inputKo" spellcheck="false" rows="14"></textarea>
++          <textarea id="inputKo" spellcheck="false" rows="6"></textarea>
+         </label>
+         <p class="field-hint">여기에는 한국어 작업 요청만 입력하세요. 쉘 설정 명령, 실행 명령, 토큰, 비밀값은 넣지 않습니다.</p>
+-        <div class="role-display" aria-label="역할 안내">
+-          <div>
+-            <strong>Claude</strong>
+-            <span>planning / requirements / review</span>
+-          </div>
+-          <div>
+-            <strong>Codex</strong>
+-            <span>implementation / tests / patch summary</span>
+-          </div>
+-        </div>
+-        <p class="role-aside">Manual Shell(git-shell)은 비AI 보조 창입니다. 사람이 직접 git status / git diff / 테스트 / commit / PR 명령을 실행합니다.</p>
+         <div class="pipeline-runner">
+           <button id="runPipeline" class="primary-action" type="button">Claude → Codex → Claude 전체 실행</button>
+           <div class="primary-actions">
+             <button data-send="claude-plan" type="button">Claude 계획 생성</button>
+             <button data-send="codex-implement" type="button">Codex 구현 실행</button>
+             <button data-send="claude-review" type="button">Claude 리뷰 실행</button>
++            <button data-send="codex-review-fix" type="button">Codex 리뷰 반영 실행</button>
++            <button data-send="claude-re-review" type="button">Claude 재리뷰 실행</button>
++            <button id="finalManualReview" type="button">최종 확인으로 이동</button>
+           </div>
+         </div>
+       </section>
+ 
++      <section class="panel control-panel">
++        <h2>승인 / 서비스 제어</h2>
++        <p class="warning-text">승인은 Claude 또는 Codex AI CLI 창에만 키 입력을 보내는 기능입니다. Manual Shell(git-shell)은 사람이 직접 git/test 명령을 실행하는 비AI 창입니다.</p>
++        <label>
++          제어할 tmux 창
++          <select id="tmuxWindow"></select>
++        </label>
++        <div class="actions control-actions">
++          <button id="approveOnce" type="button">승인 / 계속 진행</button>
++          <button id="approveSession" type="button">세션 승인</button>
++          <button id="rejectAction" type="button">거절</button>
++          <button id="interruptAction" type="button">중단</button>
++          <button id="restartAiTeam" type="button">AI팀 재시작</button>
++          <button id="restartGui" type="button">GUI 서버 재시작</button>
++        </div>
++      </section>
++
++      <section class="panel tmux-panel">
++        <div class="panel-head">
++          <h2>실시간 tmux 출력</h2>
++          <button id="refreshTmuxOutput" type="button">출력 새로고침</button>
++        </div>
++        <pre id="tmuxOutput" aria-live="polite"></pre>
++      </section>
++
+       <section class="panel pipeline-status">
+         <div class="panel-head">
+           <h2>파이프라인 상태</h2>
+@@ -96,29 +109,42 @@
+         <div id="pipelineSteps" class="pipeline-steps"></div>
+       </section>
+ 
+-      <section class="panel control-panel">
+-        <h2>승인 / 서비스 제어</h2>
+-        <p class="warning-text">승인은 Claude 또는 Codex AI CLI 창에만 키 입력을 보내는 기능입니다. Manual Shell(git-shell)은 사람이 직접 git/test 명령을 실행하는 비AI 창입니다.</p>
++      <details class="panel job-settings">
++        <summary>작업 설정</summary>
+         <label>
+-          제어할 tmux 창
+-          <select id="tmuxWindow"></select>
++          프로젝트 경로
++          <input id="projectDir" type="text" autocomplete="off" spellcheck="false">
+         </label>
+-        <div class="actions control-actions">
+-          <button id="approveOnce" type="button">승인 / 계속 진행</button>
+-          <button id="approveSession" type="button">세션 승인</button>
+-          <button id="rejectAction" type="button">거절</button>
+-          <button id="interruptAction" type="button">중단</button>
+-          <button id="restartAiTeam" type="button">AI팀 재시작</button>
+-          <button id="restartGui" type="button">GUI 서버 재시작</button>
++        <div class="role-display" aria-label="역할 안내">
++          <div>
++            <strong>Claude</strong>
++            <span>planning / requirements / review</span>
++          </div>
++          <div>
++            <strong>Codex</strong>
++            <span>implementation / tests / patch summary</span>
++          </div>
+         </div>
+-      </section>
++        <p class="role-aside">Manual Shell(git-shell)은 비AI 보조 창입니다. 사람이 직접 git status / git diff / 테스트 / commit / PR 명령을 실행합니다.</p>
++      </details>
+ 
+-      <section class="panel tmux-panel">
++      <details class="panel advanced-panel">
++        <summary>고급 제어</summary>
++        <div class="actions">
++          <button id="startTeam" type="button">AI 팀 시작</button>
++          <button id="createJob" type="button">작업 폴더 생성</button>
++          <button id="saveInput" type="button">request.ko.md 저장</button>
++          <button id="gitStatus" type="button">git status</button>
++          <button id="gitDiff" type="button">git diff</button>
++        </div>
++      </details>
++
++      <section class="panel artifacts">
+         <div class="panel-head">
+-          <h2>실시간 tmux 출력</h2>
+-          <button id="refreshTmuxOutput" type="button">출력 새로고침</button>
++          <h2>산출물</h2>
++          <button id="loadArtifacts" type="button">목록 새로고침</button>
+         </div>
+-        <pre id="tmuxOutput" aria-live="polite"></pre>
++        <div id="artifactList" class="artifact-list"></div>
+       </section>
+ 
+       <section class="panel result-summary">
+@@ -143,25 +169,6 @@
+         </dl>
+       </section>
+ 
+-      <details class="panel advanced-panel">
+-        <summary>고급 제어</summary>
+-        <div class="actions">
+-          <button id="startTeam" type="button">AI 팀 시작</button>
+-          <button id="createJob" type="button">작업 폴더 생성</button>
+-          <button id="saveInput" type="button">request.ko.md 저장</button>
+-          <button id="gitStatus" type="button">git status</button>
+-          <button id="gitDiff" type="button">git diff</button>
+-        </div>
+-      </details>
+-
+-      <section class="panel artifacts">
+-        <div class="panel-head">
+-          <h2>산출물</h2>
+-          <button id="loadArtifacts" type="button">목록 새로고침</button>
+-        </div>
+-        <div id="artifactList" class="artifact-list"></div>
+-      </section>
+-
+       <section class="panel output-panel">
+         <div class="panel-head">
+           <h2>출력</h2>
+@@ -191,11 +198,36 @@
+             <dt>감지 요약</dt>
+             <dd id="approvalModalSummary">-</dd>
+           </div>
++          <div>
++            <dt>요청 유형</dt>
++            <dd id="approvalModalType">-</dd>
++          </div>
++          <div>
++            <dt>명령/대상</dt>
++            <dd id="approvalModalCommand">-</dd>
++          </div>
++          <div>
++            <dt>작업 디렉터리</dt>
++            <dd id="approvalModalCwd">-</dd>
++          </div>
++          <div>
++            <dt>위험도</dt>
++            <dd id="approvalModalRisk">-</dd>
++          </div>
++          <div>
++            <dt>추천 행동</dt>
++            <dd id="approvalModalRecommendation">-</dd>
++          </div>
+         </dl>
++        <details class="approval-raw">
++          <summary>원문 보기</summary>
++          <pre id="approvalModalRaw">-</pre>
++        </details>
+         <p class="modal-warning">주의: 이 버튼은 현재 AI CLI 창에 키 입력을 보내는 기능입니다. 위험한 명령은 승인하지 마세요.</p>
++        <p id="approvalModalRiskWarning" class="modal-warning">-</p>
+         <div class="modal-actions">
+-          <button data-approval-action="/api/tmux/approve-once" type="button">1회 승인</button>
+-          <button data-approval-action="/api/tmux/approve-session" type="button">세션 승인</button>
++          <button id="approvalModalApproveOnce" data-approval-action="/api/tmux/approve-once" type="button">1회 승인</button>
++          <button id="approvalModalApproveSession" data-approval-action="/api/tmux/approve-session" type="button">세션 승인</button>
+           <button data-approval-action="/api/tmux/reject" class="danger-action" type="button">거절</button>
+           <button data-approval-action="/api/tmux/interrupt" class="danger-action" type="button">중단</button>
+           <button id="dismissApprovalModal" type="button">닫기</button>
+diff --git a/web/public/style.css b/web/public/style.css
+index 9d50479..e9c85a8 100644
+--- a/web/public/style.css
++++ b/web/public/style.css
+@@ -64,11 +64,11 @@ h2 {
+ }
+ 
+ .layout {
+-  display: grid;
+-  grid-template-columns: minmax(320px, 0.95fr) minmax(360px, 1.05fr);
++  display: flex;
++  flex-direction: column;
+   gap: 18px;
+   padding: 22px;
+-  max-width: 1440px;
++  max-width: 1100px;
+   margin: 0 auto;
+ }
+ 
+@@ -80,14 +80,6 @@ h2 {
+   padding: 18px;
+ }
+ 
+-.setup {
+-  grid-row: span 4;
+-}
+-
+-.output-panel {
+-  grid-column: 2;
+-}
+-
+ .panel-head {
+   display: flex;
+   align-items: center;
+@@ -103,6 +95,26 @@ h2 {
+   justify-content: flex-end;
+ }
+ 
++.quick-actions {
++  display: grid;
++  gap: 12px;
++}
++
++.job-settings {
++  padding: 14px 18px;
++}
++
++.job-settings > summary {
++  cursor: pointer;
++  font-size: 18px;
++  font-weight: 800;
++  padding: 4px 0;
++}
++
++.job-settings[open] {
++  padding-bottom: 18px;
++}
++
+ label {
+   display: grid;
+   gap: 7px;
+@@ -173,7 +185,7 @@ select {
+ }
+ 
+ textarea {
+-  min-height: 330px;
++  min-height: 140px;
+   resize: vertical;
+   padding: 12px;
+   line-height: 1.5;
+@@ -484,6 +496,37 @@ button:disabled {
+   font-weight: 800;
+ }
+ 
++.approval-details dd[data-risk="low"] {
++  color: #0f766e;
++}
++
++.approval-details dd[data-risk="medium"],
++.approval-details dd[data-risk="unknown"] {
++  color: #92400e;
++}
++
++.approval-details dd[data-risk="high"] {
++  color: var(--danger);
++}
++
++.approval-raw {
++  margin-top: 14px;
++}
++
++.approval-raw summary {
++  cursor: pointer;
++  color: var(--muted);
++  font-size: 13px;
++  font-weight: 800;
++}
++
++.approval-raw pre {
++  min-height: 120px;
++  max-height: 220px;
++  margin-top: 8px;
++  font-size: 12px;
++}
++
+ .modal-warning {
+   margin: 14px 0 0;
+   padding: 10px 12px;
+@@ -610,16 +653,9 @@ pre {
+   }
+ 
+   .layout {
+-    grid-template-columns: 1fr;
+     padding: 14px;
+   }
+ 
+-  .setup,
+-  .output-panel {
+-    grid-row: auto;
+-    grid-column: auto;
+-  }
+-
+   .step-grid {
+     grid-template-columns: 1fr;
+   }
+diff --git a/web/server.js b/web/server.js
+index 0ce1e5d..7d07b26 100644
+--- a/web/server.js
++++ b/web/server.js
+@@ -16,6 +16,8 @@ const SAFE_WINDOWS = {
+   'claude-plan': 'claude',
+   'codex-implement': 'codex',
+   'claude-review': 'claude',
++  'codex-review-fix': 'codex',
++  'claude-re-review': 'claude',
+   claude: 'claude',
+   codex: 'codex'
+ };
+@@ -56,9 +58,7 @@ const ISSUE_PATTERNS = [
+   {
+     type: 'approval_required',
+     patterns: [
+-      /approval|approve|allow|continue|proceed|permission/i,
+-      /승인|허용|계속 진행|진행하시겠습니까|거절/i,
+-      /1\).*(approve|allow|승인|계속)|2\).*(session|세션)|3\).*(reject|거절)/i
++      /allow execution|allow edit|do you want to proceed|would you like to continue|allow for this session|no, suggest changes|enter your response/i
+     ]
+   },
+   {
+@@ -80,12 +80,16 @@ const pipelineStates = new Map();
+ const PIPELINE_STAGES = [
+   { id: 'claude-plan', state: 'claude_planning', label: 'Claude 계획 생성', role: 'claude-plan', window: 'claude', artifacts: ['plan.md', 'codex-task.md'] },
+   { id: 'codex-implement', state: 'codex_implementing', label: 'Codex 구현 실행', role: 'codex-implement', window: 'codex', artifacts: ['patch.md'] },
+-  { id: 'claude-review', state: 'claude_reviewing', label: 'Claude 리뷰 실행', role: 'claude-review', window: 'claude', artifacts: ['review.md'] }
++  { id: 'claude-review', state: 'claude_reviewing', label: 'Claude 리뷰 실행', role: 'claude-review', window: 'claude', artifacts: ['review.md'] },
++  { id: 'codex-review-fix', state: 'codex_fixing_review', label: 'Codex 리뷰 반영 실행', role: 'codex-review-fix', window: 'codex', artifacts: ['status.md'] },
++  { id: 'claude-re-review', state: 'claude_re_reviewing', label: 'Claude 재리뷰 실행', role: 'claude-re-review', window: 'claude', artifacts: ['review.md'] }
+ ];
+ const ACTIVE_PIPELINE_STATES = new Set([
+   'claude_planning',
+   'codex_implementing',
+   'claude_reviewing',
++  'codex_fixing_review',
++  'claude_re_reviewing',
+   'approval_required'
+ ]);
+ const FINAL_PIPELINE_STATES = new Set([
+@@ -93,6 +97,9 @@ const FINAL_PIPELINE_STATES = new Set([
+   'failed',
+   'blocked',
+   'manual_review_required',
++  'review_approved',
++  'review_changes_requested',
++  'manual_final_approval_required',
+   'idle'
+ ]);
+ const ARTIFACT_PRIORITY = [
+@@ -240,8 +247,97 @@ function currentTargetWindow(state) {
+   return stage ? stage.window : null;
+ }
+ 
+-function publicIdlePipelineState(projectDir = null, jobId = null) {
++function stageByState(status) {
++  return PIPELINE_STAGES.find((stage) => stage.state === status) || null;
++}
++
++function stageForGate(status, currentStep) {
++  return stageById(currentStep) || stageByState(status) || PIPELINE_STAGES[0];
++}
++
++function nextStageGate(state) {
++  if (!state) {
++    return PIPELINE_STAGES[0];
++  }
++  if (state.status === 'succeeded' || state.status === 'review_approved' || state.status === 'manual_final_approval_required') {
++    return null;
++  }
++  if (state.status === 'review_changes_requested') {
++    return stageById('codex-review-fix');
++  }
++  return stageForGate(state.status, state.currentStep);
++}
++
++function artifactPath(projectDir, jobId, name) {
++  return path.join(projectDir, 'docs', 'ai', 'jobs', jobId, name);
++}
++
++async function artifactStat(projectDir, jobId, name) {
++  const stat = await fs.stat(artifactPath(projectDir, jobId, name)).catch(() => null);
++  return stat && stat.isFile() && stat.size > 0 ? stat : null;
++}
++
++async function artifactExists(projectDir, jobId, name, afterIso = null) {
++  const stat = await artifactStat(projectDir, jobId, name);
++  if (!stat) {
++    return false;
++  }
++  if (!afterIso) {
++    return true;
++  }
++  const after = Date.parse(afterIso);
++  return Number.isNaN(after) ? true : stat.mtimeMs >= after;
++}
++
++async function artifactStatus(projectDir, jobId, names, afterIso = null) {
++  const files = [];
++  for (const name of names) {
++    const stat = await artifactStat(projectDir, jobId, name);
++    const exists = stat ? await artifactExists(projectDir, jobId, name, afterIso) : false;
++    files.push({ name, exists, modifiedAt: stat ? stat.mtime.toISOString() : null });
++  }
++  return files;
++}
++
++async function allArtifactsExist(projectDir, jobId, names, afterIso = null) {
++  const files = await artifactStatus(projectDir, jobId, names, afterIso);
++  return {
++    ok: files.every((file) => file.exists),
++    files,
++    missing: files.filter((file) => !file.exists).map((file) => file.name)
++  };
++}
++
++async function buildStageRequirements(projectDir, jobId, stage) {
++  if (!stage) {
++    return {
++      stage: null,
++      label: null,
++      files: [],
++      missing: [],
++      nextStageAllowed: true,
++      guidance: ''
++    };
++  }
++  const requirements = await allArtifactsExist(projectDir, jobId, stage.artifacts);
++  return {
++    stage: stage.id,
++    label: stage.label,
++    files: requirements.files,
++    missing: requirements.missing,
++    nextStageAllowed: requirements.ok,
++    guidance: requirements.ok
++      ? '다음 단계를 실행할 수 있습니다.'
++      : `필수 산출물이 아직 생성되지 않았습니다: ${requirements.missing.join(', ')}`
++  };
++}
++
++async function publicIdlePipelineState(projectDir = null, jobId = null) {
+   const now = new Date().toISOString();
++  const artifacts = projectDir && jobId ? await listArtifacts(projectDir, jobId) : [];
++  const requirements = projectDir && jobId
++    ? await buildStageRequirements(projectDir, jobId, PIPELINE_STAGES[0])
++    : await buildStageRequirements(null, null, null);
+   return {
+     ok: true,
+     jobKey: projectDir && jobId ? pipelineKey(projectDir, jobId) : null,
+@@ -255,15 +351,22 @@ function publicIdlePipelineState(projectDir = null, jobId = null) {
+       targetWindow: null,
+       waitingApproval: false,
+       detectedIssue: null,
+-      artifacts: [],
++      artifacts,
+       gitDiff: '-',
+       reviewStatus: '-',
+-      nextAction: '작업 요청을 입력한 뒤 Claude → Codex → Claude 전체 실행을 누르세요.'
++      nextAction: '작업 요청을 입력한 뒤 Claude → Codex → Claude 전체 실행을 누르세요.',
++      requirements
++    },
++    artifacts,
++    summary: {
++      createdArtifacts: artifacts.map((artifact) => artifact.name),
++      gitDiff: { hasChanges: false, saved: false, path: null, changedFiles: [] },
++      review: { status: 'not_started', file: null, decision: null }
+     }
+   };
+ }
+ 
+-function publicPipelineState(state) {
++async function publicPipelineState(state) {
+   if (!state) {
+     return publicIdlePipelineState();
+   }
+@@ -277,6 +380,7 @@ function publicPipelineState(state) {
+     ? `${review.status}: ${review.file}${review.decision ? ` / ${review.decision}` : ''}`
+     : review.status || '-';
+   const detectedIssue = state.detectedIssue || null;
++  const requirements = await buildStageRequirements(state.projectDir, state.jobId, nextStageGate(state));
+ 
+   return {
+     ok: true,
+@@ -297,7 +401,8 @@ function publicPipelineState(state) {
+       artifacts: state.artifacts,
+       gitDiff: gitDiffText,
+       reviewStatus,
+-      nextAction: nextRecommendedAction(state, reviewStatus)
++      nextAction: nextRecommendedAction(state, reviewStatus),
++      requirements
+     },
+     steps: state.steps,
+     artifacts: state.artifacts,
+@@ -315,6 +420,18 @@ function pipelineMessage(status) {
+   if (status === 'claude_reviewing') {
+     return 'Claude가 현재 diff와 패치 요약을 리뷰하는 단계입니다.';
+   }
++  if (status === 'codex_fixing_review') {
++    return 'Codex가 Claude 리뷰의 수정 요청만 반영하는 단계입니다.';
++  }
++  if (status === 'claude_re_reviewing') {
++    return 'Claude가 수정 반영 후 diff를 다시 리뷰하는 단계입니다.';
++  }
++  if (status === 'review_approved' || status === 'manual_final_approval_required') {
++    return 'Claude 리뷰가 승인되었습니다. 이제 사람이 git diff를 확인하고 commit/PR 여부를 결정하세요.';
++  }
++  if (status === 'review_changes_requested') {
++    return 'Claude가 수정 요청을 남겼습니다. Codex가 리뷰 내용을 반영해야 합니다.';
++  }
+   if (status === 'succeeded') {
+     return '파이프라인이 완료되었습니다.';
+   }
+@@ -334,11 +451,14 @@ function pipelineMessage(status) {
+ }
+ 
+ function nextRecommendedAction(state, reviewStatus) {
+-  if (state.status === 'succeeded') {
++  if (state.status === 'review_approved' || state.status === 'manual_final_approval_required' || state.status === 'succeeded') {
+     return reviewStatus && reviewStatus !== '-'
+       ? 'Claude 리뷰 결과를 확인한 뒤 사람이 직접 commit, push, PR 생성 여부를 결정하세요.'
+       : '산출물과 git diff를 확인한 뒤 사람이 직접 다음 작업을 결정하세요.';
+   }
++  if (state.status === 'review_changes_requested') {
++    return 'Codex 리뷰 반영 실행을 눌러 Claude가 요청한 수정만 반영하세요.';
++  }
+   if (state.status === 'manual_review_required' || state.status === 'approval_required') {
+     return 'tmux 출력을 확인하고 필요한 경우 승인 / 계속 진행, 세션 승인, 거절, 중단 중 하나를 선택하세요.';
+   }
+@@ -438,24 +558,25 @@ async function refreshPipelineArtifacts(state) {
+ 
+ async function findFirstExistingArtifact(projectDir, jobId, names) {
+   for (const name of names) {
+-    const filePath = path.join(projectDir, 'docs', 'ai', 'jobs', jobId, name);
+-    const stat = await fs.stat(filePath).catch(() => null);
+-    if (stat && stat.isFile() && stat.size > 0) {
+-      return { name, path: filePath };
++    if (await artifactExists(projectDir, jobId, name)) {
++      return { name, path: artifactPath(projectDir, jobId, name) };
+     }
+   }
+   return null;
+ }
+ 
+-async function waitForArtifact(projectDir, jobId, names, state = null, timeoutMs = PIPELINE_STEP_TIMEOUT_MS) {
++async function waitForArtifacts(projectDir, jobId, names, state = null, timeoutMs = PIPELINE_STEP_TIMEOUT_MS) {
+   const started = Date.now();
++  const afterIso = state && state.currentStep
++    ? state.steps.find((step) => step.id === state.currentStep)?.startedAt || null
++    : null;
+   while (Date.now() - started < timeoutMs) {
+     if (state && !ACTIVE_PIPELINE_STATES.has(state.status)) {
+       return null;
+     }
+-    const artifact = await findFirstExistingArtifact(projectDir, jobId, names);
+-    if (artifact) {
+-      return artifact;
++    const requirements = await allArtifactsExist(projectDir, jobId, names, afterIso);
++    if (requirements.ok) {
++      return requirements.files;
+     }
+     await new Promise((resolve) => setTimeout(resolve, PIPELINE_POLL_MS));
+   }
+@@ -492,6 +613,10 @@ function markTimedOutRunningStep(state) {
+ }
+ 
+ function summarizeIssue(output, type) {
++  if (type === 'approval_required') {
++    const block = extractApprovalBlock(output);
++    return block ? block.split(/\r?\n/).map((line) => line.trim()).filter(Boolean)[0]?.slice(0, 220) || ISSUE_RECOMMENDATIONS[type] : ISSUE_RECOMMENDATIONS[type];
++  }
+   const lines = String(output || '').split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+   const matcher = ISSUE_PATTERNS.find((item) => item.type === type);
+   if (matcher) {
+@@ -503,9 +628,72 @@ function summarizeIssue(output, type) {
+   return lines.slice(-3).join(' ').slice(0, 220) || ISSUE_RECOMMENDATIONS[type] || '최근 tmux 출력에서 확인이 필요한 상태를 감지했습니다.';
+ }
+ 
++function isLikelyCodeOrSearchLine(line) {
++  return /^\s*[+-]/.test(line)
++    || /\bconst\s+|\bfunction\s+|=>|stageWindows|pipelineStates|server\.js|Search\s+/i.test(line)
++    || /['"]approval_required['"]|['"]manual_review_required['"]/i.test(line)
++    || /^\s*(web\/|app\/|docs\/|projects\/).+:\d+[:\s]/.test(line)
++    || /^\s*```/.test(line);
++}
++
++function stripCodeLikeApprovalLines(output) {
++  const lines = String(output || '').split(/\r?\n/);
++  let inCodeBlock = false;
++  const kept = [];
++  for (const line of lines) {
++    if (/^\s*```/.test(line)) {
++      inCodeBlock = !inCodeBlock;
++      continue;
++    }
++    if (inCodeBlock || isLikelyCodeOrSearchLine(line)) {
++      continue;
++    }
++    kept.push(line);
++  }
++  return kept.join('\n');
++}
++
++function hasApprovalOptions(block) {
++  return /(?:^|\n)\s*(?:1[.)]|2[.)]|3[.)]).*(?:allow|approve|session|reject|승인|세션|거절|continue)/i.test(block);
++}
++
++function hasCommandOrEditSummary(block) {
++  return /(?:command|execute|run|edit|file|patch|modify|명령|실행|수정|편집|파일)\s*[:：]/i.test(block)
++    || /\b(npm|node|python3?|git|mkdir|cat|chmod|cp|mv|rm|sudo|curl|gh)\b/i.test(block)
++    || /[\w./-]+\.(?:js|css|html|md|json|py|ts|tsx|jsx|yml|yaml|sh)/i.test(block);
++}
++
++function findStrictApprovalPromptBlock(output) {
++  const cleaned = stripCodeLikeApprovalLines(output);
++  const lines = cleaned.split(/\r?\n/);
++  const strongPattern = /allow execution|allow edit|do you want to proceed|would you like to continue|allow for this session|no, suggest changes|enter your response/i;
++  for (let i = lines.length - 1; i >= 0; i -= 1) {
++    if (!strongPattern.test(lines[i])) {
++      continue;
++    }
++    const block = lines.slice(Math.max(0, i - 8), Math.min(lines.length, i + 10)).join('\n').trim();
++    if (hasApprovalOptions(block) || hasCommandOrEditSummary(block)) {
++      return block;
++    }
++  }
++  return '';
++}
++
+ function detectIssueFromOutput(output, windowName) {
+   const text = String(output || '');
+   for (const category of ISSUE_PATTERNS) {
++    if (category.type === 'approval_required') {
++      const block = findStrictApprovalPromptBlock(text);
++      if (block) {
++        return {
++          type: category.type,
++          window: windowName,
++          summary: summarizeIssue(block, category.type),
++          recommendation: ISSUE_RECOMMENDATIONS[category.type]
++        };
++      }
++      continue;
++    }
+     if (category.patterns.some((pattern) => pattern.test(text))) {
+       return {
+         type: category.type,
+@@ -527,6 +715,94 @@ async function captureRecentTmuxOutput(windowName, lines = 120) {
+   return result.ok ? redactedOutput(result.stdout) : '';
+ }
+ 
++function approvalTypeFromBlock(block) {
++  if (/edit|patch|modify|write|수정|편집|파일/i.test(block)) {
++    return 'file_edit';
++  }
++  if (/command|execute|run|명령|실행/i.test(block)) {
++    return 'command_execution';
++  }
++  return 'unknown';
++}
++
++function extractCommandOrTarget(block) {
++  const lines = String(block || '').split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
++  const commandLine = lines.find((line) => /^\$|^>|^`[^`]+`$|^(npm|node|python|python3|git|mkdir|cat|chmod|cp|mv|rm|sudo|curl|gh)\b/i.test(line));
++  if (commandLine) {
++    return commandLine.replace(/^[$>]\s*/, '').replace(/^`|`$/g, '').slice(0, 260);
++  }
++  const fileLine = lines.find((line) => /(?:^|\s)([\w./-]+\.(?:js|css|html|md|json|py|ts|tsx|jsx|yml|yaml|sh))(?:\s|$)/i.test(line));
++  return fileLine ? fileLine.slice(0, 260) : '';
++}
++
++function classifyApprovalRisk(block, commandOrTarget) {
++  const text = `${block || ''}\n${commandOrTarget || ''}`;
++  if (/rm\s+-rf|sudo\b|curl\b.*\|\s*(bash|sh)|git\s+push|gh\s+pr\s+merge|deploy|deployment|kubectl|terraform|\.env|secret|token|api\s*key|auth\/|payment\/|billing\/|migrations?\/|production|prod\b/i.test(text)) {
++    return {
++      risk: 'high',
++      recommendation: '거절 권장',
++      canApproveOnce: false,
++      canApproveSession: false,
++      warning: '승인하지 마세요. 거절 또는 중단하세요.'
++    };
++  }
++  if (/npm\s+install|chmod\b|\bcp\b|\bmv\b/i.test(text) || /(?:^|\s)(?!docs\/ai\/jobs\/)[\w./-]+\.(?:js|css|html|py|ts|tsx|jsx|json|yml|yaml|sh)/i.test(text)) {
++    return {
++      risk: 'medium',
++      recommendation: '직접 확인 필요',
++      canApproveOnce: true,
++      canApproveSession: false,
++      warning: '명령과 수정 대상을 tmux 출력에서 확인한 뒤 1회 승인만 고려하세요.'
++    };
++  }
++  if (/mkdir\s+-p\s+docs\/ai\/jobs\/|docs\/ai\/jobs\/[\w._-]+|git\s+(status|diff)\b|node\s+--check\b|python3?\s+-m\s+(py_compile|compileall)\b|cat\s+docs\/ai\/jobs\//i.test(text)) {
++    return {
++      risk: 'low',
++      recommendation: '1회 승인 가능',
++      canApproveOnce: true,
++      canApproveSession: true,
++      warning: '세션 승인은 같은 종류의 안전한 명령이 반복될 때만 사용하세요.'
++    };
++  }
++  return {
++    risk: 'unknown',
++    recommendation: '직접 확인 필요',
++    canApproveOnce: false,
++    canApproveSession: false,
++    warning: '명령 내용을 파악하지 못했습니다. tmux 출력에서 직접 확인하세요.'
++  };
++}
++
++function extractApprovalBlock(output) {
++  return findStrictApprovalPromptBlock(output);
++}
++
++function cleanWorkingDirectory(block) {
++  const match = String(block || '').match(/(?:cwd|working directory|작업 디렉터리)\s*[:=]\s*([^\n]+)/i);
++  return match ? match[1].trim().slice(0, 260) : '-';
++}
++
++async function buildApprovalContext(windowName, step = null) {
++  const safeWindow = validateAiTmuxWindow(windowName);
++  const output = await captureRecentTmuxOutput(safeWindow, 180);
++  const rawBlock = extractApprovalBlock(output);
++  if (!rawBlock) {
++    return null;
++  }
++  const commandOrTarget = extractCommandOrTarget(rawBlock);
++  const risk = classifyApprovalRisk(rawBlock, commandOrTarget);
++  return {
++    window: safeWindow,
++    step,
++    type: approvalTypeFromBlock(rawBlock),
++    commandOrTarget: commandOrTarget || '확인 불가',
++    workingDirectory: cleanWorkingDirectory(rawBlock),
++    rawBlock,
++    ...risk,
++    summary: `${safeWindow === 'codex' ? 'Codex' : 'Claude'} 창에서 명령 실행 승인 요청이 감지되었습니다.`
++  };
++}
++
+ async function refreshDetectedIssue(state) {
+   if (!state || !ACTIVE_PIPELINE_STATES.has(state.status)) {
+     return;
+@@ -540,6 +816,13 @@ async function refreshDetectedIssue(state) {
+   if (!issue) {
+     return;
+   }
++  if (issue.type === 'approval_required') {
++    issue.approvalContext = await buildApprovalContext(targetWindow, state.currentStep).catch(() => null);
++    if (!issue.approvalContext) {
++      return;
++    }
++    issue.summary = issue.approvalContext.summary;
++  }
+ 
+   state.detectedIssue = issue;
+   state.error = issue.recommendation;
+@@ -565,25 +848,24 @@ async function applyArtifactProgress(state) {
+     return;
+   }
+ 
+-  for (const stage of PIPELINE_STAGES) {
+-    const artifact = await findFirstExistingArtifact(state.projectDir, state.jobId, stage.artifacts);
+-    const step = state.steps.find((item) => item.id === stage.id);
+-    if (artifact && step && step.status === 'running') {
+-      state.status = stage.state;
+-      state.error = null;
+-      state.detectedIssue = null;
+-      setStep(state, stage.id, stage.label, 'succeeded', artifact.name);
+-    }
+-  }
+-
+   const current = stageById(state.currentStep);
+   if (current) {
+-    const artifact = await findFirstExistingArtifact(state.projectDir, state.jobId, current.artifacts);
+-    if (artifact) {
++    const step = state.steps.find((item) => item.id === current.id);
++    const requirements = await allArtifactsExist(state.projectDir, state.jobId, current.artifacts, step?.startedAt || null);
++    if (requirements.ok) {
+       state.status = current.state;
+       state.error = null;
+       state.detectedIssue = null;
+-      setStep(state, current.id, current.label, 'succeeded', artifact.name);
++      setStep(state, current.id, current.label, 'succeeded', requirements.files.map((file) => file.name).join(', '));
++      if (current.id === 'codex-review-fix') {
++        state.status = 'review_changes_requested';
++        state.currentStep = null;
++        state.error = 'Codex가 리뷰 반영을 완료했습니다. Claude 재리뷰를 실행하세요.';
++      }
++      if (current.id === 'claude-review' || current.id === 'claude-re-review') {
++        await updateReviewSummary(state.projectDir, state.jobId, state);
++        applyReviewDecision(state);
++      }
+     }
+   }
+ }
+@@ -646,14 +928,60 @@ async function updateReviewSummary(projectDir, jobId, state) {
+     return;
+   }
+   const content = await fs.readFile(artifact.path, 'utf8').catch(() => '');
+-  const decisionLine = content.split(/\r?\n/).find((line) => /decision|verdict|approve|request changes|comment/i.test(line));
++  const decision = detectReviewDecision(content);
++  const decisionLine = content.split(/\r?\n/).find((line) => /decision|verdict|approve|request[_ -]?changes|block|승인|수정\s*요청|차단|보류/i.test(line));
+   state.summary.review = {
+     status: 'available',
+     file: artifact.name,
+-    decision: decisionLine ? decisionLine.trim() : null
++    decision,
++    decisionLine: decisionLine ? decisionLine.trim() : null
+   };
+ }
+ 
++function detectReviewDecision(content) {
++  const text = String(content || '');
++  if (/\bBLOCK\b|차단|보류/i.test(text)) {
++    return 'BLOCK';
++  }
++  if (/\bREQUEST[_ -]?CHANGES\b|수정\s*요청/i.test(text)) {
++    return 'REQUEST_CHANGES';
++  }
++  if (/\bAPPROVE\b|\bAPPROVED\b|승인/i.test(text)) {
++    return 'APPROVE';
++  }
++  return 'UNKNOWN';
++}
++
++function applyReviewDecision(state) {
++  const decision = state.summary.review.decision;
++  const now = new Date().toISOString();
++  if (decision === 'APPROVE') {
++    state.status = 'manual_final_approval_required';
++    state.currentStep = null;
++    state.finishedAt = now;
++    state.error = 'Claude 리뷰가 승인되었습니다. 이제 사람이 git diff를 확인하고 commit/PR 여부를 결정하세요.';
++    return;
++  }
++  if (decision === 'REQUEST_CHANGES') {
++    state.status = 'review_changes_requested';
++    state.currentStep = null;
++    state.finishedAt = now;
++    state.error = 'Claude가 수정 요청을 남겼습니다. Codex가 리뷰 내용을 반영해야 합니다.';
++    return;
++  }
++  if (decision === 'BLOCK') {
++    state.status = 'blocked';
++    state.currentStep = null;
++    state.finishedAt = now;
++    state.error = 'Claude가 작업을 차단했습니다. 요청 범위나 안전 조건을 수정해야 합니다.';
++    return;
++  }
++  state.status = 'manual_review_required';
++  state.currentStep = null;
++  state.finishedAt = now;
++  state.error = 'Claude 리뷰 결정을 확인할 수 없습니다. review.md에서 APPROVE, REQUEST_CHANGES, BLOCK 중 하나를 확인하세요.';
++}
++
+ async function runPipeline(state, inputKo) {
+   const { projectDir, jobId } = state;
+   const jobDir = path.join(projectDir, 'docs', 'ai', 'jobs', jobId);
+@@ -679,11 +1007,11 @@ async function runPipeline(state, inputKo) {
+       if (!sent.ok) {
+         throw new Error(`${step.label} 실패: ${sent.message || sent.stderr || 'tmux 전송 실패'}`);
+       }
+-      const artifact = await waitForArtifact(projectDir, jobId, step.artifacts, state);
++      const artifacts = await waitForArtifacts(projectDir, jobId, step.artifacts, state);
+       if (!ACTIVE_PIPELINE_STATES.has(state.status)) {
+         return;
+       }
+-      if (!artifact) {
++      if (!artifacts) {
+         markManualRequired(state, step.id, step.label);
+         await refreshPipelineArtifacts(state);
+         return;
+@@ -691,7 +1019,7 @@ async function runPipeline(state, inputKo) {
+       state.status = step.state;
+       state.error = null;
+       state.detectedIssue = null;
+-      setStep(state, step.id, step.label, 'succeeded', artifact.name);
++      setStep(state, step.id, step.label, 'succeeded', artifacts.map((artifact) => artifact.name).join(', '));
+       await refreshPipelineArtifacts(state);
+ 
+       if (step.id === 'codex-implement') {
+@@ -723,11 +1051,11 @@ async function runPipeline(state, inputKo) {
+     if (!reviewed.ok) {
+       throw new Error(`Claude 리뷰 전송 실패: ${reviewed.message || reviewed.stderr || 'tmux 전송 실패'}`);
+     }
+-    const reviewArtifact = await waitForArtifact(projectDir, jobId, reviewerStep.artifacts, state);
++    const reviewArtifacts = await waitForArtifacts(projectDir, jobId, reviewerStep.artifacts, state);
+     if (!ACTIVE_PIPELINE_STATES.has(state.status)) {
+       return;
+     }
+-    if (!reviewArtifact) {
++    if (!reviewArtifacts) {
+       markManualRequired(state, reviewerStep.id, reviewerStep.label);
+       await updateReviewSummary(projectDir, jobId, state);
+       await refreshPipelineArtifacts(state);
+@@ -736,13 +1064,10 @@ async function runPipeline(state, inputKo) {
+     state.status = reviewerStep.state;
+     state.error = null;
+     state.detectedIssue = null;
+-    setStep(state, reviewerStep.id, reviewerStep.label, 'succeeded', reviewArtifact.name);
++    setStep(state, reviewerStep.id, reviewerStep.label, 'succeeded', reviewArtifacts.map((artifact) => artifact.name).join(', '));
+     await updateReviewSummary(projectDir, jobId, state);
+     await refreshPipelineArtifacts(state);
+-
+-    state.status = 'succeeded';
+-    state.currentStep = null;
+-    state.finishedAt = new Date().toISOString();
++    applyReviewDecision(state);
+   } catch (error) {
+     state.status = 'failed';
+     state.error = error.message || '파이프라인 실행 실패';
+@@ -797,6 +1122,31 @@ function buildPrompt(role, projectDir, jobId, inputKo) {
+       '',
+       `Review the git diff saved at ${path.join(jobDir, 'local-diff.patch')} when present, ${path.join(jobDir, 'patch.md')}, and the approved request/plan.`,
+       `Write the review into ${path.join(jobDir, 'review.md')} using the Claude review output format.`,
++      'The review must include exactly one decision marker: APPROVE, REQUEST_CHANGES, or BLOCK.',
++      'Do not commit, push, merge, deploy, or run arbitrary shell commands.'
++    ].join('\n');
++  }
++
++  if (role === 'codex-review-fix') {
++    return [
++      'Use prompts/codex-implementer.md.',
++      common,
++      '',
++      `Read ${path.join(jobDir, 'patch.md')}, ${path.join(jobDir, 'review.md')}, and the current git diff.`,
++      'Apply only the changes explicitly requested by Claude review. Do not expand scope.',
++      `Update ${path.join(jobDir, 'patch.md')} and write ${path.join(jobDir, 'status.md')} with what changed and which checks ran.`,
++      'Do not commit, push, merge, deploy, or change secrets, .env, auth, payment, production infra, or database migrations.'
++    ].join('\n');
++  }
++
++  if (role === 'claude-re-review') {
++    return [
++      'Use prompts/claude.md.',
++      common,
++      '',
++      `Re-review the updated git diff, ${path.join(jobDir, 'patch.md')}, ${path.join(jobDir, 'status.md')}, and the previous review in ${path.join(jobDir, 'review.md')}.`,
++      `Update ${path.join(jobDir, 'review.md')} with the new review result.`,
++      'The review must include exactly one decision marker: APPROVE, REQUEST_CHANGES, or BLOCK.',
+       'Do not commit, push, merge, deploy, or run arbitrary shell commands.'
+     ].join('\n');
+   }
+@@ -883,6 +1233,51 @@ function handleError(res, error) {
+   res.status(400).json({ ok: false, error: error.message || '요청을 처리할 수 없습니다.' });
+ }
+ 
++function getOrCreatePipelineState(projectDir, jobId) {
++  const key = pipelineKey(projectDir, jobId);
++  let state = pipelineStates.get(key);
++  if (!state) {
++    state = createPipelineState(projectDir, jobId);
++    state.status = 'idle';
++    state.currentStep = null;
++    pipelineStates.set(key, state);
++  }
++  return state;
++}
++
++async function requireArtifacts(projectDir, jobId, names, message) {
++  const requirements = await allArtifactsExist(projectDir, jobId, names);
++  if (!requirements.ok) {
++    throw new Error(`${message} 누락: ${requirements.missing.join(', ')}`);
++  }
++}
++
++async function sendManualStage(projectDir, jobId, inputKo, stageId) {
++  const stage = stageById(stageId);
++  if (!stage) {
++    throw new Error('허용되지 않은 단계입니다.');
++  }
++  const state = getOrCreatePipelineState(projectDir, jobId);
++  if (ACTIVE_PIPELINE_STATES.has(state.status)) {
++    throw new Error('이미 실행 중인 단계가 있습니다.');
++  }
++  state.status = stage.state;
++  state.error = null;
++  state.detectedIssue = null;
++  state.finishedAt = null;
++  setStep(state, stage.id, stage.label, 'running');
++  const result = await sendToWindow(stage.role, projectDir, jobId, inputKo);
++  await appendPipelineLog(projectDir, jobId, stage.id, `${result.stdout || ''}${result.stderr || ''}${result.message || ''}`);
++  if (!result.ok) {
++    state.status = 'failed';
++    state.error = result.message || result.stderr || 'tmux 전송 실패';
++    state.finishedAt = new Date().toISOString();
++    setStep(state, stage.id, stage.label, 'failed', state.error);
++  }
++  await refreshPipelineArtifacts(state);
++  return { state, result };
++}
++
+ app.get('/api/status', async (req, res) => {
+   const result = await runFile(path.join(SCRIPTS_DIR, 'status-ai-team.sh'), []);
+   res.json(cleanOutput(result));
+@@ -1004,11 +1399,11 @@ app.get('/api/pipeline/status', async (req, res) => {
+       if (!ACTIVE_PIPELINE_STATES.has(state.status)) {
+         await updateReviewSummary(projectDir, jobId, state);
+       }
+-      res.json(publicPipelineState(state));
++      res.json(await publicPipelineState(state));
+       return;
+     }
+ 
+-    res.json(publicIdlePipelineState(projectDir, jobId));
++    res.json(await publicIdlePipelineState(projectDir, jobId));
+   } catch (error) {
+     handleError(res, error);
+   }
+@@ -1049,6 +1444,20 @@ app.get('/api/tmux/output', async (req, res) => {
+   }
+ });
+ 
++app.get('/api/tmux/approval-context', async (req, res) => {
++  try {
++    const windowName = validateAiTmuxWindow(req.query.window);
++    const context = await buildApprovalContext(windowName, typeof req.query.step === 'string' ? req.query.step : null);
++    if (!context) {
++      res.status(404).json({ ok: false, error: '실제 승인 프롬프트를 찾지 못했습니다.' });
++      return;
++    }
++    res.json({ ok: true, approvalContext: context });
++  } catch (error) {
++    handleError(res, error);
++  }
++});
++
+ for (const [endpoint, keys] of [
+   ['/api/tmux/approve-once', ['1', 'Enter']],
+   ['/api/tmux/approve-session', ['2', 'Enter']],
+@@ -1124,15 +1533,35 @@ app.post('/api/service/restart-gui', async (req, res) => {
+ for (const [endpoint, role] of [
+   ['/api/send/claude-plan', 'claude-plan'],
+   ['/api/send/codex-implement', 'codex-implement'],
+-  ['/api/send/claude-review', 'claude-review']
++  ['/api/send/claude-review', 'claude-review'],
++  ['/api/send/codex-review-fix', 'codex-review-fix'],
++  ['/api/send/claude-re-review', 'claude-re-review']
+ ]) {
+   app.post(endpoint, async (req, res) => {
+     try {
+       const projectDir = await resolveProjectDir(req.body.projectDir);
+       const jobId = validateJobId(req.body.jobId);
+       const inputKo = typeof req.body.inputKo === 'string' ? req.body.inputKo : '';
+-      const result = await sendToWindow(role, projectDir, jobId, inputKo);
+-      res.json(cleanOutput(result));
++      if (role === 'codex-implement') {
++        await requireArtifacts(projectDir, jobId, ['plan.md', 'codex-task.md'], 'Claude 계획이 아직 완료되지 않았습니다. plan.md와 codex-task.md가 생성된 뒤 Codex를 실행할 수 있습니다.');
++      }
++      if (role === 'claude-review') {
++        await requireArtifacts(projectDir, jobId, ['patch.md'], 'patch.md가 생성된 뒤 Claude 리뷰를 실행할 수 있습니다.');
++      }
++      if (role === 'codex-review-fix') {
++        await requireArtifacts(projectDir, jobId, ['patch.md', 'review.md'], 'patch.md와 review.md가 생성된 뒤 Codex 리뷰 반영을 실행할 수 있습니다.');
++      }
++      if (role === 'claude-re-review') {
++        await requireArtifacts(projectDir, jobId, ['patch.md', 'review.md', 'status.md'], 'Codex 리뷰 반영 상태가 생성된 뒤 Claude 재리뷰를 실행할 수 있습니다.');
++      }
++      const stage = stageById(role);
++      const { state, result } = stage
++        ? await sendManualStage(projectDir, jobId, inputKo, role)
++        : { state: null, result: await sendToWindow(role, projectDir, jobId, inputKo) };
++      res.json({
++        ...cleanOutput(result),
++        pipeline: state ? (await publicPipelineState(state)).status : null
++      });
+     } catch (error) {
+       handleError(res, error);
+     }
+
+```
+
+## 2026-05-14T09:56:21.888Z — claude-review
+
+```
+(no output)
+```
