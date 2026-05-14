@@ -1,9 +1,12 @@
+import json
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 from app.domain.market import StrategyInput
+from app.reports.dry_run_analyzer import analyze_run, find_latest_run_dir, write_analysis_files
 from app.strategy import STRATEGY_NAMES
 
 router = APIRouter()
@@ -16,6 +19,10 @@ class PaperRunRequest(BaseModel):
 
 class DryRunTickRequest(BaseModel):
     snapshots: list[StrategyInput] = []
+
+
+class AnalyzeRequest(BaseModel):
+    run_dir: str | None = None
 
 
 class PaperRunResponse(BaseModel):
@@ -199,3 +206,57 @@ def dry_run_tick(payload: DryRunTickRequest, request: Request) -> dict[str, Any]
 @router.get("/paper/dry-run/status")
 def dry_run_status(request: Request) -> dict[str, Any]:
     return request.app.state.dry_run_controller.summary()
+
+
+def _reports_base(settings) -> Path:
+    raw = Path(settings.dry_run_reports_dir)
+    if raw.is_absolute():
+        raise HTTPException(status_code=500, detail="dry_run_reports_dir misconfigured")
+    project_dir = Path(__file__).resolve().parents[2]
+    base = (project_dir / raw).resolve()
+    if base != project_dir and project_dir not in base.parents:
+        raise HTTPException(status_code=500, detail="reports dir outside project")
+    return base
+
+
+def _resolve_run_dir(settings, run_dir_request: str | None) -> Path:
+    base = _reports_base(settings)
+    if run_dir_request is None:
+        latest = find_latest_run_dir(base)
+        if latest is None:
+            raise HTTPException(status_code=404, detail="no run directories")
+        return latest
+    candidate = (base / run_dir_request).resolve()
+    if candidate != base and base not in candidate.parents:
+        raise HTTPException(status_code=400, detail="run_dir outside reports directory")
+    if not candidate.is_dir():
+        raise HTTPException(status_code=404, detail="run_dir not found")
+    return candidate
+
+
+@router.post("/reports/dry-run/analyze")
+def reports_analyze(payload: AnalyzeRequest, request: Request) -> dict[str, Any]:
+    settings = request.app.state.settings
+    run_dir = _resolve_run_dir(settings, payload.run_dir)
+    result = analyze_run(run_dir)
+    paths = write_analysis_files(result)
+    base = _reports_base(settings)
+    return {
+        "run_dir": run_dir.name,
+        "files": {key: str(path.relative_to(base)) for key, path in paths.items()},
+        "summary": json.loads(paths["summary"].read_text(encoding="utf-8")),
+    }
+
+
+@router.get("/reports/dry-run/latest")
+def reports_latest(request: Request) -> dict[str, Any]:
+    settings = request.app.state.settings
+    run_dir = _resolve_run_dir(settings, None)
+    summary_path = run_dir / "analysis_summary.json"
+    if not summary_path.is_file():
+        result = analyze_run(run_dir)
+        write_analysis_files(result)
+    return {
+        "run_dir": run_dir.name,
+        "summary": json.loads(summary_path.read_text(encoding="utf-8")),
+    }

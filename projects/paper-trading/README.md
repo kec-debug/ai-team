@@ -206,3 +206,34 @@ curl -X POST http://127.0.0.1:8000/paper/dry-run/tick -H 'content-type: applicat
 curl -X GET http://127.0.0.1:8000/paper/dry-run/status
 curl -X POST http://127.0.0.1:8000/paper/dry-run/stop
 ```
+
+## dry-run 리포트 분석 (mvp-019)
+
+mvp-018에서 만든 dry-run 산출물(`reports/dry_run/run_<ts>/{events.jsonl, summary.json, orders.csv}`)을 읽어 분석 리포트를 생성합니다. read-only이며 전략, OMS, broker 설정을 변경하지 않습니다.
+
+### CLI
+
+```bash
+cd projects/paper-trading
+.venv/bin/python -m app.reports --latest
+.venv/bin/python -m app.reports --run-dir reports/dry_run/run_2026-05-14T08-00-00
+```
+
+### API
+
+```bash
+curl -X POST http://127.0.0.1:8000/reports/dry-run/analyze \
+  -H 'content-type: application/json' \
+  -d '{}'
+curl http://127.0.0.1:8000/reports/dry-run/latest
+```
+
+### 산출물
+
+분석 결과는 같은 run directory 안에 생성됩니다.
+
+- `analysis_summary.json` - 카운터, top block reasons, 심볼 통계, pass rate, 제안, 경고
+- `analysis_report.md` - 사람용 마크다운 리포트
+- `claude_review_input.md` - Claude/Codex가 전략 개선 plan을 작성할 때 참고할 입력 문서
+
+`reports/`는 프로젝트 `.gitignore`로 무시되므로 분석 산출물도 commit되지 않습니다. 응답/리포트에 KIS app key/secret/account 원문은 포함하지 않으며 `dump_safe` 가드가 credential-like key를 차단합니다.
