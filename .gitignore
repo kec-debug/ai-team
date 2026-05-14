@@ -3,3 +3,6 @@ projects/paper-trading/.env
 .env
 .env.*
 !.env.example
+
+# Imported local reference code - never commit directly
+imports/

@@ -81,6 +81,45 @@ Blocked candidates never reach OMS.
 | `KIS_APP_KEY` | KIS app key | `.env`에서만 |
 | `KIS_APP_SECRET` | KIS app secret | `.env`에서만 |
 | `ALLOW_MARKET_ORDERS` | 항상 `false` | `true`이면 `load_settings()` 거부 |
+| `KILL_SWITCH_ENGAGED` | 주문 kill switch | `true`이면 RiskEngine/KIS pre-flight 거부 |
+
+### 주문 흐름 안전 가드와 내부 모델 (mvp-009)
+
+`KisBroker.place_order` / `cancel_order` / `replace_order` 호출 시 다음 pre-flight 가드를 통과해야 합니다(`validate_kis_order_request`):
+
+- `trading_mode == paper`
+- `live_trading_enabled is False`
+- `allow_market_orders is False`
+- `kis_env == "paper"`
+- `kill_switch_engaged is False`
+- `order_type in (LIMIT, STOP_LIMIT)`
+- `quantity > 0`
+- `limit_price > 0`
+
+가드 실패 시 `KisOrderRejectedError(reason)`로 즉시 거절합니다. 메시지에는 사유 코드만 들어가며 raw credentials/계좌번호는 포함되지 않습니다.
+
+가드를 통과하더라도 KIS HTTP 전송은 본 단계에서 구현되지 않습니다. 다음 메서드는 항상 `NotImplementedError`로 fail-closed 합니다: `place_order`, `cancel_order`, `replace_order`, `get_open_orders`, `get_fills`, `get_order_status`.
+
+`KisOrderRequest`는 내부 도메인 변환 모델로, KIS HTTP payload로 직렬화되지 않고 단위 테스트 및 향후 mvp 연결 시 입력 모델로만 사용됩니다. 계좌번호는 `account_no_masked`로만 보유합니다.
+
+`kill_switch_engaged=true`로 설정하면 RiskEngine이 모든 주문을 즉시 거절하고, KIS pre-flight도 동일하게 거절합니다. `.env`의 `KILL_SWITCH_ENGAGED=true`로 활성화할 수 있습니다.
+
+`KisOrderRequest`는 `symbol`, `market`, `side`, `quantity`, `order_type`, `limit_price`, `extended_hours`,
+`account_no_masked`, `broker_environment`, `idempotency_key`를 보유합니다. `idempotency_key`는
+`kis-paper-{oms_id}` 형식으로 결정적으로 생성되며, raw 계좌번호는 포함하지 않습니다.
+
+`KisOrderResponse`는 향후 KIS 응답을 내부 모델로 보관하기 위한 구조입니다. `raw_response_sanitized`는
+`sanitize_kis_response()`를 통과한 dict만 저장해야 하며, app key/secret/account/access token으로 보이는
+키 또는 값은 `<redacted>`로 치환됩니다.
+
+`KisBroker.capabilities()`는 현재 모든 주문 관련 기능을 `false`로 반환합니다. 공식 KIS 모의투자 주문 문서로
+endpoint/TR ID/payload를 확인하기 전까지 submission/cancel/replace/open_orders/fills/order_status는 모두
+사용 불가 상태이며 fail-closed입니다.
+
+`/paper/status`는 `kis_order_entry_ready`, `kis_order_entry_mode`(`disabled | paper_guarded | not_implemented`),
+`kis_order_methods_fail_closed`, `kill_switch_engaged`와 함께 `kis_order_submission_available`,
+`kis_cancel_available`, `kis_replace_available`, `kis_open_orders_available`, `kis_fills_available`를 노출합니다.
+현 단계에서 가용성 필드는 모두 `false`입니다.
 
 `.env`는 Git에 올라가지 않습니다(루트 `.gitignore` + 프로젝트 `.gitignore` 양쪽에서 ignore). `.env.example`은 placeholder만 보관합니다.
 

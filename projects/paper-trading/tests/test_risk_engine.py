@@ -27,6 +27,18 @@ def test_risk_rejects_live_enabled(settings):
     assert not decision.approved
 
 
+def test_risk_engine_kill_switch_at_top(settings):
+    bad = replace(
+        settings,
+        kill_switch_engaged=True,
+        trading_mode=TradingMode.LIVE,
+        live_trading_enabled=True,
+    )
+    decision = RiskEngine(bad).evaluate(intent())
+    assert decision.approved is False
+    assert decision.reason == "kill_switch_engaged"
+
+
 def test_risk_rejects_allowlist(settings):
     decision = RiskEngine(settings).evaluate(intent(symbol="TSLA"))
     assert decision.reason == "symbol_not_allowed"

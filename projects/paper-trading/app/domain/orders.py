@@ -14,6 +14,7 @@ class OrderIntent:
     limit_price: Decimal
     stop_price: Decimal | None = None
     client_tag: str | None = None
+    quote_timestamp: datetime | None = None
 
     def __post_init__(self) -> None:
         if self.symbol != self.symbol.upper():
@@ -50,6 +51,7 @@ class BrokerOrder:
     submitted_at: datetime
     stop_price: Decimal | None = None
     client_tag: str | None = None
+    quote_timestamp: datetime | None = None
 
 
 @dataclass(frozen=True)

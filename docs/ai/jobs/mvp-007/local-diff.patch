@@ -85,6 +85,393 @@ index 7d9ecf1..dcfaa5c 100644
 +- 테스트 결과가 무엇인지
 +patch.md에 정리해줘.
 \ No newline at end of file
+diff --git a/docs/ai/jobs/mvp-007/pipeline.log.md b/docs/ai/jobs/mvp-007/pipeline.log.md
+index 75df48b..5af59ba 100644
+--- a/docs/ai/jobs/mvp-007/pipeline.log.md
++++ b/docs/ai/jobs/mvp-007/pipeline.log.md
+@@ -1477,3 +1477,27 @@ index 0ce1e5d..7d07b26 100644
+ ```
+ (no output)
+ ```
++
++## 2026-05-14T10:53:00.580Z — create-job
++
++```
++Ensured job directory: /root/ai-dev-center/projects/ai-team/docs/ai/jobs/mvp-007
++```
++
++## 2026-05-14T10:53:00.588Z — save-input
++
++```
++Saved: /root/ai-dev-center/projects/ai-team/docs/ai/jobs/mvp-007/request.ko.md
++```
++
++## 2026-05-14T10:53:00.600Z — claude-plan
++
++```
++(no output)
++```
++
++## 2026-05-14T10:53:00.611Z — codex-implement
++
++```
++(no output)
++```
+diff --git a/docs/ai/jobs/mvp-007/request.ko.md b/docs/ai/jobs/mvp-007/request.ko.md
+index dfd0315..9fc2cdb 100644
+--- a/docs/ai/jobs/mvp-007/request.ko.md
++++ b/docs/ai/jobs/mvp-007/request.ko.md
+@@ -1,227 +1,170 @@
+ # 작업 ID
+-mvp-007
++mvp-008
+ 
+ # 작업명
+-KIS Open API 모의투자 인증 / 계좌 / 시세 연결
++KIS 모의투자 주문 흐름 연결 준비
+ 
+-미국주식 자동 페이퍼매매 시스템에 KIS Open API 모의투자 연결을 진행해줘.
++미국주식 자동 페이퍼매매 시스템에서 KIS 모의투자 주문 흐름을 연결할 준비를 해줘.
+ 
+-현재 목표는 실전매매가 아니라 KIS 모의투자 / paper trading 연결 검증이다.
++현재 목표는 실전매매가 아니라 KIS 모의투자 / paper trading 주문 흐름 검증이다.
+ live trading은 절대 활성화하지 않는다.
+ 
+-## 현재 전제
++## 현재 상태
+ 
+-mvp-006에서 KIS 설정 구조와 Broker Adapter 골격을 준비했다.
++mvp-006-1과 mvp-007에서 아래 작업이 완료되었다.
+ 
+-이번 mvp-007에서는 가능한 범위 안에서 아래 기능을 연결한다.
++- paper-trading 프로젝트 기본 구조 생성
++- KIS 설정 구조 준비
++- `.env` 기반 KIS 설정 로딩
++- KIS Broker Adapter 골격
++- KIS Auth / Account / MarketData Client 골격
++- `/paper/status`에 KIS 상태 표시
++- secret/account masking 테스트
++- 74개 테스트 통과
+ 
+-1. KIS 모의투자 인증 토큰 발급 연결
+-2. 토큰 refresh / 만료 처리 구조
+-3. KIS 모의투자 계좌 정보 조회
+-4. KIS 해외주식 또는 미국주식 시세 조회 구조
+-5. Broker healthcheck 강화
+-6. `/paper/status` 또는 기존 status endpoint에 KIS 연결 상태 표시
+-7. 실제 주문은 아직 연결하지 않음
++이번 mvp-008에서는 실제 실계좌 주문이 아니라,
++KIS 모의투자 주문 흐름을 안전하게 연결할 준비를 한다.
+ 
+-## 보안 조건
++## 핵심 목표
+ 
+-KIS 모의투자 계좌번호, app key, app secret은 `.env`에 저장되어 있다고 가정한다.
++Strategy → RiskEngine → OMS → BrokerAdapter → KIS Broker 경로가 유지되도록 하면서,
++KIS 모의투자 주문 메서드의 안전한 경계를 만든다.
+ 
+-중요:
+-- 실제 계좌번호, app key, app secret 값을 코드에 쓰지 마.
+-- patch.md, review.md, 로그, 테스트 출력에 실제 secret을 노출하지 마.
+-- `.env.example`에는 placeholder만 유지해.
+-- `.env`는 Git에 추가하지 마.
+-- 설정 객체 repr/logging에서 app secret이 노출되지 않게 해.
+-- 테스트에서도 실제 secret 값을 출력하지 마.
+-
+-## 공식 문서 조건
+-
+-KIS Open API endpoint, TR ID, payload는 공식 문서 기준으로만 구현해야 한다.
+-
+-중요:
+-- 공식 문서나 프로젝트 내 명확한 문서가 없으면 endpoint를 추측해서 만들지 마.
+-- 확실하지 않은 endpoint, TR ID, header, payload는 TODO로 남겨.
+-- fake endpoint를 만들지 마.
+-- 실제 주문 endpoint는 이번 작업에서 구현하지 마.
+-- 인증 / 계좌조회 / 시세조회도 확실한 공식 정보가 없으면 fail-closed + TODO로 남겨.
+-
+-## 이번 구현 범위
+-
+-가능하면 아래 기능을 구현해줘.
+-
+-### 1. KIS Auth Client
++단, 공식 문서가 확인되지 않은 endpoint, TR ID, payload는 절대 추측해서 구현하지 않는다.
+ 
+-- `.env`에서 아래 값을 읽는다.
+-  - KIS_ENV
+-  - KIS_ACCOUNT_NO
+-  - KIS_APP_KEY
+-  - KIS_APP_SECRET
+-- 모의투자 환경인지 확인한다.
+-- 인증 토큰 발급 메서드를 만든다.
+-- 토큰 만료 시 refresh 또는 재발급 가능 구조를 만든다.
+-- 인증 실패 시 fail-closed 한다.
+-- secret이 로그에 찍히지 않게 한다.
++## 구현할 내용
+ 
+-필요 메서드 예시:
+-- authenticate()
+-- refresh_token()
+-- get_access_token()
+-- is_authenticated()
+-- clear_token()
++### 1. KIS 주문 메서드 경계 정리
+ 
+-### 2. KIS Account Client
++`KisBroker` 또는 현재 구조에 맞는 KIS adapter에 아래 주문 관련 메서드를 정리해줘.
+ 
+-- 계좌 정보 조회 골격 또는 실제 연결을 구현한다.
+-- 공식 문서 기준이 확인된 경우에만 실제 요청을 작성한다.
+-- 계좌번호는 출력 시 마스킹한다.
+-- 실패 시 주문 가능 상태로 전환하지 않는다.
+-
+-필요 메서드 예시:
+-- get_account()
+-- get_positions()
+-- get_cash_balance()
+-
+-### 3. KIS Market Data Client
+-
+-- 미국주식 시세 조회 구조를 만든다.
+-- 공식 문서 기준이 확인된 경우에만 실제 요청을 작성한다.
+-- 최소 quote 모델을 반환한다.
+-- 실패 시 stale / unavailable 상태로 처리한다.
+-
+-필요 메서드 예시:
+-- get_quote(symbol)
+-- get_last_price(symbol)
+-- healthcheck_market_data()
+-
+-### 4. KIS Broker Adapter 연결
++- place_order()
++- cancel_order()
++- replace_order()
++- get_open_orders()
++- get_fills()
++- get_order_status()
+ 
+-기존 BrokerAdapter 구조를 유지한다.
++조건:
++- 실제 endpoint/TR ID/payload를 추측해서 만들지 마.
++- 공식 문서가 없으면 TODO + fail-closed로 둬.
++- 메서드는 존재하되, 실주문 전송은 아직 하지 마.
++- NotImplementedError 또는 안전한 Rejected 상태를 반환하게 해.
++- 에러 메시지는 secret/account를 노출하지 않아야 한다.
+ 
+-- authenticate()
+-- refresh_token()
+-- get_account()
+-- get_positions()
+-- get_quote()
+-- healthcheck()
++### 2. OMS → KIS Broker 연결 준비
+ 
+-주문 관련 메서드는 아직 실제 전송하지 않는다.
++OMS가 broker adapter를 통해 주문을 보낼 수 있는 구조인지 점검하고,
++필요하면 interface를 정리해줘.
+ 
+-- place_order()
+-- cancel_order()
+-- replace_order()
++중요:
++- Strategy가 KIS를 직접 호출하면 안 된다.
++- Agent/LLM이 KIS를 직접 호출하면 안 된다.
++- OMS를 우회해서 주문하면 안 된다.
++- 모든 주문은 반드시 RiskEngine을 통과해야 한다.
++- OMS만 executable order를 만들 수 있다.
++
++### 3. KIS 모의투자 주문 요청 모델 준비
++
++실제 전송은 하지 말고, 내부 도메인 모델 기준으로 KIS 주문 요청 변환 경계를 만들어줘.
++
++예:
++- symbol
++- side
++- quantity
++- order_type
++- limit_price
++- extended_hours
++- account_no_masked
++- broker_environment
+ 
+-위 주문 메서드는 이번 단계에서 fail-closed 또는 NotImplemented 상태로 둔다.
++조건:
++- 시장가 주문은 금지
++- 지정가 주문만 허용
++- live trading이면 차단
++- KIS_ENV가 paper가 아니면 차단
++- 계좌번호 원문은 출력하지 말고 마스킹만 사용
+ 
+-## 주문 안전 조건
++### 4. 주문 안전 guard 추가
+ 
+-반드시 유지해.
++KIS 주문 흐름에 아래 guard를 적용해줘.
+ 
+-- live trading은 false
+-- TRADING_MODE는 paper
+-- 시장가 주문 금지
+-- 실주문 전송 금지
+-- Strategy가 KIS Adapter를 직접 호출하지 않음
+-- Agent/LLM이 직접 주문하지 않음
+-- 모든 주문은 Strategy → RiskEngine → OMS → BrokerAdapter 경로 유지
+-- OMS 우회 금지
+-- RiskEngine 우회 금지
++- TRADING_MODE=paper만 허용
++- LIVE_TRADING_ENABLED=false 확인
++- ALLOW_MARKET_ORDERS=false 확인
++- KIS_ENV=paper 확인
++- order_type이 market이면 거절
++- quantity가 0 이하이면 거절
++- limit_price가 없으면 거절
++- stale quote면 거절
++- kill switch가 켜져 있으면 거절
+ 
+-## 상태 API
++### 5. `/paper/status` 또는 status에 주문 준비 상태 추가
+ 
+-가능하면 `/paper/status` 또는 기존 `/status`에 아래 정보를 추가해줘.
++가능하면 아래 상태를 추가해줘.
+ 
+-- broker_type
+-- broker_environment
+-- kis_config_loaded
+-- kis_authenticated
+-- kis_account_loaded
+-- kis_market_data_available
+-- live_trading_enabled
+-- allow_market_orders
+-- last_broker_error
++- kis_order_entry_ready
++- kis_order_entry_mode: disabled | paper_guarded | not_implemented
++- kis_order_methods_fail_closed: true
++- live_trading_enabled: false
++- allow_market_orders: false
+ - secret_exposed: false
+ 
+-중요:
+-- app key, app secret, 계좌번호 원문은 절대 출력하지 마.
+-- 계좌번호는 필요하면 마스킹해서 보여줘.
++실제 app key, app secret, 계좌번호 원문은 절대 출력하지 마.
+ 
+-## 테스트 요구사항
++### 6. 테스트 추가
+ 
+ 아래 테스트를 추가해줘.
+ 
+-1. `.env` 기반 KIS config 로딩 테스트
+-2. app secret이 repr/logging/status에 노출되지 않는지 테스트
+-3. KIS_ENV=paper 기본 동작 테스트
+-4. live trading 기본 false 테스트
+-5. 시장가 주문 기본 금지 테스트
+-6. 인증 client가 secret을 직접 출력하지 않는지 테스트
+-7. 공식 문서 정보가 없을 때 endpoint를 추측하지 않고 TODO/fail-closed 되는지 테스트
+-8. 주문 메서드가 아직 실주문을 전송하지 않는지 테스트
+-9. BrokerAdapter 인터페이스가 깨지지 않는지 테스트
+-10. `/paper/status` 또는 `/status`에 KIS 상태가 안전하게 표시되는지 테스트
++1. KIS place_order가 실주문을 보내지 않고 fail-closed 되는지
++2. KIS cancel_order가 실취소를 보내지 않고 fail-closed 되는지
++3. KIS replace_order가 실정정을 보내지 않고 fail-closed 되는지
++4. market order가 거절되는지
++5. limit_price 없는 주문이 거절되는지
++6. live trading true이면 거절되는지
++7. KIS_ENV가 paper가 아니면 거절되는지
++8. Strategy가 KIS adapter를 직접 호출하지 않는지
++9. OMS 경로를 우회하지 않는지
++10. status에 secret/account 원문이 노출되지 않는지
++11. 기존 74개 테스트가 계속 통과하는지
+ 
+ ## 수정 가능 파일
+ 
+-필요한 경우 아래 파일을 수정해도 된다.
++필요하면 아래 파일을 수정해도 된다.
+ 
+-- app/adapters/brokers/kis.py
+-- app/adapters/brokers/base.py
+-- app/core/config.py
+-- app/api/routes.py
+-- app/runtime/paper_runner.py
+-- app/monitoring/status.py
+-- app/domain/*
+-- tests/*
+-- .env.example
+-- README.md
+-- docs/architecture.md
+-- docs/runbook.md
++- projects/paper-trading/app/broker/kis.py
++- projects/paper-trading/app/broker/base.py
++- projects/paper-trading/app/oms/*
++- projects/paper-trading/app/risk/*
++- projects/paper-trading/app/api/routes.py
++- projects/paper-trading/app/api/server.py
++- projects/paper-trading/app/config/*
++- projects/paper-trading/app/models/*
++- projects/paper-trading/tests/*
++- projects/paper-trading/README.md
++- docs/ai/jobs/mvp-008/patch.md
+ 
+-실제 프로젝트 구조가 다르면 현재 구조에 맞춰 최소 수정해줘.
++프로젝트 구조가 다르면 현재 구조에 맞춰 최소 수정해줘.
+ 
+ ## 금지 사항
+ 
+-- 실제 KIS app key, app secret, 계좌번호를 코드에 쓰지 마.
+-- 실제 값을 patch.md, review.md, 로그에 출력하지 마.
+-- `.env` 파일을 Git에 추가하지 마.
+-- live trading을 true로 바꾸지 마.
+-- 실계좌 주문 기능을 만들지 마.
+-- 주문 endpoint를 연결하지 마.
+-- KIS endpoint / TR ID / payload를 추측해서 만들지 마.
++- 실제 KIS endpoint를 추측해서 만들지 마.
++- TR ID를 추측해서 넣지 마.
++- 실제 주문 전송 코드를 만들지 마.
++- live trading을 활성화하지 마.
+ - 시장가 주문을 허용하지 마.
+-- 브로커 API를 Strategy에서 직접 호출하게 만들지 마.
++- app key, app secret, 계좌번호 원문을 코드/문서/로그/test output에 쓰지 마.
++- `.env` 파일을 Git에 추가하지 마.
++- Strategy가 KIS를 직접 호출하게 만들지 마.
++- Agent/LLM이 직접 주문하게 만들지 마.
+ - auth, payment, production infra, database migrations는 건드리지 마.
+ - git commit, push, merge는 자동화하지 마.
+ 
+ ## 검증
+ 
+-가능하면 아래를 실행해줘.
+-
+-- python -m compileall app tests
+-- python -m pytest -p no:cacheprovider
+-
+-만약 현재 프로젝트 구조가 Python이 아니거나 테스트 명령이 다르면,
+-현재 repo 구조에 맞는 안전한 검증 명령을 실행하고 patch.md에 이유를 적어줘.
+-
+-## 완료 후 patch.md에 정리할 내용
+-
+-1. 어떤 파일을 수정했는지
+-2. KIS 인증 구조가 어떻게 되었는지
+-3. 계좌 조회 구조가 어떻게 되었는지
+-4. 시세 조회 구조가 어떻게 되었는지
+-5. 실제 주문 기능이 여전히 비활성인지
+-6. secret이 노출되지 않는지
+-7. 어떤 테스트를 실행했는지
+-8. 공식 문서가 없어 TODO로 남긴 부분
+-9. 다음 mvp에서 무엇을 하면 되는지
+-
+-## 다음 단계 예고
+-
+-mvp-008에서는 KIS 모의투자 주문 흐름을 연결할 예정이다.
+-단, mvp-008에서도 live trading은 비활성이고, 소액 검증 전까지 실계좌 주문은 금지한다.
+-
+-## 추가 조건
++아래를 실행해줘.
+ 
+-- 승인된 작업 범위 안에서는 추가 plan 확인을 묻지 말고 바로 구현을 시작해.
+-- 필요한 경우에만 최소한의 질문을 해.
+\ No newline at end of file
++```bash
++cd /root/ai-dev-center/projects/ai-team/projects/paper-trading
++.venv/bin/python -m compileall app tests
++.venv/bin/python -m pytest -p no:cacheprovider
+\ No newline at end of file
 diff --git a/web/public/app.js b/web/public/app.js
 index f27f460..d9fc2c2 100644
 --- a/web/public/app.js

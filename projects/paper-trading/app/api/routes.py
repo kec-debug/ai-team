@@ -28,6 +28,8 @@ def healthz() -> dict[str, bool]:
 def paper_status(request: Request) -> dict[str, Any]:
     settings = request.app.state.settings
     broker = request.app.state.broker
+    session_router = getattr(request.app.state, "session_router", None)
+    portfolio = getattr(request.app.state, "portfolio", None)
     kis_broker = getattr(request.app.state, "kis_broker", None)
     kis_loaded = bool(
         settings.kis_env
@@ -37,6 +39,31 @@ def paper_status(request: Request) -> dict[str, Any]:
     )
     kis_health = kis_broker.healthcheck() if kis_broker else {}
     market_health = kis_health.get("market_data", {})
+    kis_order_entry_mode = "disabled"
+    if kis_broker is not None:
+        settings_safe = (
+            settings.trading_mode.value == "paper"
+            and settings.live_trading_enabled is False
+            and settings.allow_market_orders is False
+            and settings.kis_env == "paper"
+            and settings.kill_switch_engaged is False
+        )
+        kis_order_entry_mode = "not_implemented" if settings_safe else "disabled"
+    kis_order_entry_ready = kis_broker is not None and kis_order_entry_mode != "disabled"
+    capabilities = (
+        kis_broker.capabilities()
+        if kis_broker
+        else {
+            "submission": False,
+            "cancel": False,
+            "replace": False,
+            "open_orders": False,
+            "fills": False,
+            "order_status": False,
+        }
+    )
+    session_policy = session_router.policy_for_us() if session_router is not None else None
+    portfolio_snapshot = portfolio.get_snapshot() if portfolio is not None else None
     return {
         "ok": True,
         "mode": settings.trading_mode.value,
@@ -63,6 +90,26 @@ def paper_status(request: Request) -> dict[str, Any]:
         "account_no_masked": kis_broker.account.masked_account_no() if kis_broker else "<unset>",
         "secret_exposed": False,
         "configured_brokers": list(getattr(request.app.state, "configured_brokers", [])),
+        "kis_order_entry_ready": kis_order_entry_ready,
+        "kis_order_entry_mode": kis_order_entry_mode,
+        "kis_order_methods_fail_closed": True,
+        "kill_switch_engaged": bool(settings.kill_switch_engaged),
+        "kis_order_submission_available": bool(capabilities.get("submission", False)),
+        "kis_cancel_available": bool(capabilities.get("cancel", False)),
+        "kis_replace_available": bool(capabilities.get("replace", False)),
+        "kis_open_orders_available": bool(capabilities.get("open_orders", False)),
+        "kis_fills_available": bool(capabilities.get("fills", False)),
+        "session": {
+            "market": "US",
+            "current": session_policy.session.value if session_policy else None,
+            "orders_allowed": bool(session_policy.orders_allowed) if session_policy else False,
+            "allowed_strategies": list(session_policy.allowed_strategies) if session_policy else [],
+        },
+        "portfolio": {
+            "positions_count": len(portfolio_snapshot.positions) if portfolio_snapshot else 0,
+            "market_value": str(portfolio_snapshot.market_value) if portfolio_snapshot else "0",
+            "realized_pnl": str(portfolio_snapshot.realized_pnl) if portfolio_snapshot else "0",
+        },
     }
 
 

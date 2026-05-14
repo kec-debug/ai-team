@@ -6,8 +6,10 @@ from app.api.routes import router
 from app.broker.paper import PaperBroker
 from app.config import load_settings
 from app.oms.manager import OMS
+from app.portfolio import PortfolioService
 from app.risk.engine import RiskEngine
 from app.runtime.paper_runner import PaperRunner
+from app.session import SessionRouter
 from app.strategy import create_strategy
 
 
@@ -19,6 +21,8 @@ def create_app() -> FastAPI:
         broker = PaperBroker()
         oms = OMS(settings, risk, broker)
         strategy = create_strategy("premarket_gap_volume_breakout", settings)
+        session_router = SessionRouter()
+        portfolio = PortfolioService()
 
         # Probe optional brokers — record which ones are instantiable given
         # current .env. The KIS adapter is never wired into OMS in this phase;
@@ -38,6 +42,8 @@ def create_app() -> FastAPI:
         app.state.oms = oms
         app.state.strategy = strategy
         app.state.runner = PaperRunner(settings, strategy, oms)
+        app.state.session_router = session_router
+        app.state.portfolio = portfolio
         app.state.configured_brokers = configured_brokers
         app.state.kis_broker = kis_broker
         yield

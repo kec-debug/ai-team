@@ -18,6 +18,8 @@ class RiskEngine:
         self._settings = settings
 
     def evaluate(self, intent: OrderIntent) -> RiskDecision:
+        if self._settings.kill_switch_engaged:
+            return RiskDecision(False, "kill_switch_engaged")
         if self._settings.trading_mode != TradingMode.PAPER:
             return RiskDecision(False, "paper_trading_required")
         if self._settings.live_trading_enabled:

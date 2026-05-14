@@ -8,6 +8,7 @@ KIS_ENV_KEYS = (
     "KIS_ACCOUNT_NO",
     "KIS_APP_KEY",
     "KIS_APP_SECRET",
+    "KILL_SWITCH_ENGAGED",
 )
 
 
@@ -53,6 +54,15 @@ def test_paper_status_kis_metadata_fields(monkeypatch):
     assert body["secret_exposed"] is False
     assert "kis_" + "secret_exposed" not in body
     assert isinstance(body["configured_brokers"], list)
+    assert body["kis_order_entry_ready"] is False
+    assert body["kis_order_entry_mode"] == "disabled"
+    assert body["kis_order_methods_fail_closed"] is True
+    assert body["kill_switch_engaged"] is False
+    assert body["kis_order_submission_available"] is False
+    assert body["kis_cancel_available"] is False
+    assert body["kis_replace_available"] is False
+    assert body["kis_open_orders_available"] is False
+    assert body["kis_fills_available"] is False
     # Credentials must never appear in the response body.
     body_text = response.text
     for needle in ("KIS_APP_KEY", "KIS_APP_SECRET", "KIS_ACCOUNT_NO"):
@@ -67,6 +77,7 @@ def test_paper_status_with_kis_config_masks_account(monkeypatch):
     monkeypatch.setenv("KIS_ACCOUNT_NO", "12345678")
     monkeypatch.setenv("KIS_APP_KEY", "fake-key")
     monkeypatch.setenv("KIS_APP_SECRET", "fake-secret")
+    monkeypatch.setenv("KILL_SWITCH_ENGAGED", "false")
 
     with TestClient(create_app()) as client:
         response = client.get("/paper/status")
@@ -81,6 +92,15 @@ def test_paper_status_with_kis_config_masks_account(monkeypatch):
     assert body["last_broker_error"] is None
     assert body["account_no_masked"] == "***5678"
     assert body["secret_exposed"] is False
+    assert body["kis_order_entry_ready"] is True
+    assert body["kis_order_entry_mode"] == "not_implemented"
+    assert body["kis_order_methods_fail_closed"] is True
+    assert body["kill_switch_engaged"] is False
+    assert body["kis_order_submission_available"] is False
+    assert body["kis_cancel_available"] is False
+    assert body["kis_replace_available"] is False
+    assert body["kis_open_orders_available"] is False
+    assert body["kis_fills_available"] is False
 
     body_text = response.text
     for needle in ("12345678", "fake-key", "fake-secret", "KIS_APP_KEY", "KIS_APP_SECRET"):

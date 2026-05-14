@@ -81,6 +81,7 @@ class PremarketGapVolumeBreakoutStrategy(Strategy):
             order_type=OrderType.LIMIT,
             limit_price=limit_price,
             client_tag=self.name,
+            quote_timestamp=snapshot.timestamp,
         )
         return StrategyResult(
             symbol=snapshot.symbol,

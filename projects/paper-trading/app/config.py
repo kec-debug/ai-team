@@ -33,6 +33,7 @@ class Settings:
     kis_app_key: str | None = field(default=None, repr=False)
     kis_app_secret: str | None = field(default=None, repr=False)
     allow_market_orders: bool = False
+    kill_switch_engaged: bool = False
 
 
 def _decimal_env(name: str, default: Decimal) -> Decimal:
@@ -112,4 +113,5 @@ def load_settings() -> Settings:
         kis_app_key=_str_env("KIS_APP_KEY"),
         kis_app_secret=_str_env("KIS_APP_SECRET"),
         allow_market_orders=False,
+        kill_switch_engaged=_bool_env("KILL_SWITCH_ENGAGED", False),
     )

@@ -46,5 +46,6 @@ class OMS:
             submitted_at=now,
             stop_price=order.stop_price,
             client_tag=order.client_tag,
+            quote_timestamp=intent.quote_timestamp,
         )
         return self._broker.submit(broker_order)

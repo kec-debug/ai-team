@@ -49,10 +49,12 @@ def test_stale_quote_blocked(settings, make_snapshot):
 
 
 def test_strategy_result_is_not_executable_order(settings, make_snapshot):
-    result = PremarketGapVolumeBreakoutStrategy(settings).evaluate(make_snapshot())
+    snapshot = make_snapshot()
+    result = PremarketGapVolumeBreakoutStrategy(settings).evaluate(snapshot)
     assert isinstance(result.non_executable_order_intent, OrderIntent)
     assert not isinstance(result.non_executable_order_intent, BrokerOrder)
     assert not isinstance(result.non_executable_order_intent, Order)
+    assert result.non_executable_order_intent.quote_timestamp == snapshot.timestamp
 
 
 def test_no_market_order_generated(settings, make_snapshot):
