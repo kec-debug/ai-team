@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Start the AI team tmux session.
+# Start the simplified Claude + Codex tmux session with a manual shell.
 #
 # Usage:
 #   ./scripts/start-ai-team.sh [PROJECT_DIR]
@@ -75,37 +75,32 @@ launch_tool() {
         "if command -v $tool >/dev/null 2>&1; then $tool; else echo '[!] $tool not found in PATH. Install it, then run: $tool'; fi" Enter
 }
 
-# --- Create session with the five windows ------------------------------------
-tmux new-session -d -s "$SESSION" -n "gemini-manager"    -c "$WORK_DIR"
-tmux new-window  -t "$SESSION"   -n "claude-architect"  -c "$WORK_DIR"
-tmux new-window  -t "$SESSION"   -n "codex-implementer" -c "$WORK_DIR"
-tmux new-window  -t "$SESSION"   -n "claude-reviewer"   -c "$WORK_DIR"
-tmux new-window  -t "$SESSION"   -n "git-shell"         -c "$WORK_DIR"
+# --- Create session with two AI windows and one manual shell ------------------
+tmux new-session -d -s "$SESSION" -n "claude" -c "$WORK_DIR"
+tmux new-window  -t "$SESSION"   -n "codex"  -c "$WORK_DIR"
+tmux new-window  -t "$SESSION"   -n "git-shell" -c "$WORK_DIR"
 
-# --- Window 1: Gemini Manager ------------------------------------------------
-print_banner "gemini-manager"    "Gemini Manager"    "Requirements, planning, English prompt generation" "$PROMPTS_DIR/gemini-manager.md"
-launch_tool  "gemini-manager"    "gemini"
+# --- Window 1: Claude ---------------------------------------------------------
+print_banner "claude" "Claude" "Planning, requirements, review" "$PROMPTS_DIR/claude.md"
+launch_tool  "claude" "claude"
 
-# --- Window 2: Claude Architect ----------------------------------------------
-print_banner "claude-architect"  "Claude Architect"  "Architecture review, risk analysis, test strategy" "$PROMPTS_DIR/claude-architect.md"
-launch_tool  "claude-architect"  "claude"
+# --- Window 2: Codex ----------------------------------------------------------
+print_banner "codex" "Codex" "Implementation, tests, patch summary" "$PROMPTS_DIR/codex-implementer.md"
+launch_tool  "codex" "codex"
 
-# --- Window 3: Codex Implementer ---------------------------------------------
-print_banner "codex-implementer" "Codex Implementer" "Implementation, tests, patches"                    "$PROMPTS_DIR/codex-implementer.md"
-launch_tool  "codex-implementer" "codex"
-
-# --- Window 4: Claude Reviewer -----------------------------------------------
-print_banner "claude-reviewer"   "Claude Reviewer"   "PR diff review, quality gate"                      "$PROMPTS_DIR/claude-reviewer.md"
-launch_tool  "claude-reviewer"   "claude"
-
-# --- Window 5: Git Shell (plain shell, no tool launch) -----------------------
-print_banner "git-shell"         "Git Shell"         "git / gh / branch / commit / PR / CI checks"       "(no prompt file — plain shell)"
-tmux send-keys -t "$SESSION:git-shell" "echo 'Use this window for: git, gh, branch, commit, PR, CI.'" Enter
-tmux send-keys -t "$SESSION:git-shell" "echo 'Reminder: never push to main directly; never auto-merge.'" Enter
+# --- Window 3: Manual Shell ---------------------------------------------------
+tmux send-keys -t "$SESSION:git-shell" "clear" Enter
+tmux send-keys -t "$SESSION:git-shell" "echo '======================================================='" Enter
+tmux send-keys -t "$SESSION:git-shell" "echo '  Window        : Manual Shell (git-shell)'" Enter
+tmux send-keys -t "$SESSION:git-shell" "echo '  Responsibility: git status, git diff, tests, human commit/PR commands'" Enter
+tmux send-keys -t "$SESSION:git-shell" "echo '  Work dir      : $WORK_DIR'" Enter
+tmux send-keys -t "$SESSION:git-shell" "echo '======================================================='" Enter
+tmux send-keys -t "$SESSION:git-shell" "echo" Enter
+tmux send-keys -t "$SESSION:git-shell" "echo 'Manual shell only. It is not an AI role and is never automated by the GUI pipeline.'" Enter
 tmux send-keys -t "$SESSION:git-shell" "echo" Enter
 
-# --- Land on the manager window first ----------------------------------------
-tmux select-window -t "$SESSION:gemini-manager"
+# --- Land on Claude first -----------------------------------------------------
+tmux select-window -t "$SESSION:claude"
 
 if [ -t 1 ]; then
     exec tmux attach -t "$SESSION"

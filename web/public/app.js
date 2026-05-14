@@ -1,6 +1,6 @@
 const state = {
   projectDir: localStorage.getItem('aiTeamProjectDir') || '',
-  jobId: localStorage.getItem('aiTeamJobId') || 'job-002'
+  jobId: localStorage.getItem('aiTeamJobId') || 'mvp-001'
 };
 
 const projectDirEl = document.querySelector('#projectDir');
@@ -16,7 +16,10 @@ const pipelineStateNameEl = document.querySelector('#pipelineStateName');
 const pipelineUpdatedAtEl = document.querySelector('#pipelineUpdatedAt');
 const pipelineTargetWindowEl = document.querySelector('#pipelineTargetWindow');
 const pipelineWaitingApprovalEl = document.querySelector('#pipelineWaitingApproval');
+const detectedIssueAlertEl = document.querySelector('#detectedIssueAlert');
 const pipelineGuidanceEl = document.querySelector('#pipelineGuidance');
+const approvalInlinePromptEl = document.querySelector('#approvalInlinePrompt');
+const reopenApprovalPopupEl = document.querySelector('#reopenApprovalPopup');
 const pipelineStepsEl = document.querySelector('#pipelineSteps');
 const summaryArtifactsEl = document.querySelector('#summaryArtifacts');
 const summaryDiffEl = document.querySelector('#summaryDiff');
@@ -24,9 +27,40 @@ const summaryReviewEl = document.querySelector('#summaryReview');
 const summaryNextActionEl = document.querySelector('#summaryNextAction');
 const tmuxWindowEl = document.querySelector('#tmuxWindow');
 const tmuxOutputEl = document.querySelector('#tmuxOutput');
+const approvalModalEl = document.querySelector('#approvalModal');
+const approvalModalStepEl = document.querySelector('#approvalModalStep');
+const approvalModalWindowEl = document.querySelector('#approvalModalWindow');
+const approvalModalSummaryEl = document.querySelector('#approvalModalSummary');
+const aiControlButtons = [
+  document.querySelector('#approveOnce'),
+  document.querySelector('#approveSession'),
+  document.querySelector('#rejectAction'),
+  document.querySelector('#interruptAction')
+];
 let pipelinePollTimer = null;
 let liveRefreshTimer = null;
+let lastApprovalKey = null;
+let currentApprovalRequest = null;
 const manualRequiredMessage = 'AI CLI 창에서 승인 대기 중일 수 있습니다. 아래 승인 버튼을 누르거나 tmux 출력을 확인하세요.';
+const detectedIssueMessages = {
+  blocked: 'AI가 작업을 차단했습니다. 작업 범위를 줄이거나 금지 항목을 별도 작업으로 분리한 뒤 다시 실행하세요.',
+  approval_required: 'AI CLI가 승인 대기 중일 수 있습니다. 승인/세션 승인/거절/중단 버튼을 사용하세요.',
+  failed: '실행 오류가 감지되었습니다. 로그를 확인하고 인증/명령/서버 상태를 점검하세요.',
+  manual_review_required: manualRequiredMessage
+};
+const activePipelineStates = new Set([
+  'claude_planning',
+  'codex_implementing',
+  'claude_reviewing',
+  'approval_required'
+]);
+const finalPipelineStates = new Set([
+  'succeeded',
+  'failed',
+  'blocked',
+  'manual_review_required',
+  'idle'
+]);
 
 projectDirEl.value = state.projectDir;
 jobIdEl.value = state.jobId;
@@ -132,14 +166,14 @@ document.querySelector('#createJob').addEventListener('click', () => {
 });
 
 document.querySelector('#saveInput').addEventListener('click', () => {
-  runAction('input.ko.md 저장', () => requestJson('/api/save-input', {
+  runAction('request.ko.md 저장', () => requestJson('/api/save-input', {
     method: 'POST',
     body: JSON.stringify(getForm())
   }));
 });
 
 runPipelineButton.addEventListener('click', async () => {
-  const result = await runAction('전체 파이프라인 실행', () => requestJson('/api/pipeline/run', {
+  const result = await runAction('Claude → Codex → Claude 전체 실행', () => requestJson('/api/pipeline/run', {
     method: 'POST',
     body: JSON.stringify(getForm())
   }));
@@ -168,8 +202,19 @@ document.querySelector('#approveOnce').addEventListener('click', () => sendTmuxC
 document.querySelector('#approveSession').addEventListener('click', () => sendTmuxControl('세션 승인', '/api/tmux/approve-session'));
 document.querySelector('#rejectAction').addEventListener('click', () => sendTmuxControl('거절', '/api/tmux/reject'));
 document.querySelector('#interruptAction').addEventListener('click', () => sendTmuxControl('중단', '/api/tmux/interrupt'));
+document.querySelector('#closeApprovalModal').addEventListener('click', closeApprovalModal);
+document.querySelector('#dismissApprovalModal').addEventListener('click', closeApprovalModal);
+reopenApprovalPopupEl.addEventListener('click', () => {
+  if (currentApprovalRequest) {
+    openApprovalModal(currentApprovalRequest, true);
+  }
+});
+document.querySelectorAll('[data-approval-action]').forEach((button) => {
+  button.addEventListener('click', () => sendApprovalModalAction(button.dataset.approvalAction));
+});
 document.querySelector('#refreshTmuxOutput').addEventListener('click', refreshTmuxOutput);
 tmuxWindowEl.addEventListener('change', refreshTmuxOutput);
+tmuxWindowEl.addEventListener('change', updateTmuxControlState);
 
 document.querySelector('#restartAiTeam').addEventListener('click', () => {
   runAction('AI팀 재시작', () => requestJson('/api/service/restart-ai-team', {
@@ -179,11 +224,33 @@ document.querySelector('#restartAiTeam').addEventListener('click', () => {
 });
 
 document.querySelector('#restartGui').addEventListener('click', () => {
-  runAction('GUI 서버 재시작', () => requestJson('/api/service/restart-gui', {
+  restartGuiServer();
+});
+
+async function restartGuiServer() {
+  const result = await runAction('GUI 서버 재시작', () => requestJson('/api/service/restart-gui', {
     method: 'POST',
     body: JSON.stringify(getForm())
   }));
-});
+  if (!result) {
+    return;
+  }
+
+  writeOutput('GUI 서버 재시작 요청 완료', '3~5초 뒤 자동 확인합니다');
+  setTimeout(checkGuiRestartStatus, 5000);
+}
+
+async function checkGuiRestartStatus() {
+  try {
+    const result = await requestJson('/api/status');
+    writeOutput('GUI 서버 재시작 확인', result.output || 'GUI 서버가 다시 응답합니다.');
+  } catch (error) {
+    writeOutput(
+      'GUI 서버 재시작 확인 실패',
+      '아직 서버가 올라오지 않았습니다. 잠시 후 새로고침하거나 수동 복구 명령을 실행하세요.'
+    );
+  }
+}
 
 document.querySelectorAll('[data-send]').forEach((button) => {
   button.addEventListener('click', () => {
@@ -272,7 +339,7 @@ async function refreshPipelineStatus() {
     );
     renderPipelineStatus(status);
     const pipeline = normalizePipelineStatus(status);
-    if (pipelinePollTimer && ['succeeded', 'failed', 'blocked_safety', 'manual_required', 'idle'].includes(pipeline.state)) {
+    if (pipelinePollTimer && finalPipelineStates.has(pipeline.state)) {
       clearInterval(pipelinePollTimer);
       pipelinePollTimer = null;
       loadArtifacts();
@@ -293,8 +360,11 @@ function renderPipelineStatus(status) {
     pipelineUpdatedAtEl.textContent = '-';
     pipelineTargetWindowEl.textContent = '-';
     pipelineWaitingApprovalEl.textContent = '-';
+    detectedIssueAlertEl.hidden = true;
+    detectedIssueAlertEl.textContent = '';
     pipelineGuidanceEl.hidden = true;
     pipelineGuidanceEl.textContent = '';
+    approvalInlinePromptEl.hidden = true;
     pipelineStepsEl.textContent = '';
     summaryArtifactsEl.textContent = '-';
     summaryDiffEl.textContent = '-';
@@ -306,27 +376,43 @@ function renderPipelineStatus(status) {
   const pipeline = normalizePipelineStatus(status);
   const currentForm = getForm();
   const current = pipeline.step ? ` / 현재 단계: ${pipeline.step}` : '';
-  pipelineStateEl.textContent = `${pipeline.state}: ${pipeline.message}${current}`;
+  const approvalRequest = getApprovalRequest(status, pipeline);
+  pipelineStateEl.textContent = approvalRequest
+    ? '승인 대기 중 — 팝업에서 처리하세요.'
+    : `${pipeline.state}: ${pipeline.message}${current}`;
   pipelineStateEl.dataset.status = pipeline.state;
-  runPipelineButton.disabled = pipeline.state === 'running';
+  runPipelineButton.disabled = activePipelineStates.has(pipeline.state);
   pipelineJobIdEl.textContent = status.jobId || currentForm.jobId || '-';
   pipelineStageEl.textContent = pipeline.step || '-';
   pipelineStateNameEl.textContent = pipeline.state;
   pipelineUpdatedAtEl.textContent = status.updatedAt ? new Date(status.updatedAt).toLocaleTimeString('ko-KR', { hour12: false }) : '-';
   pipelineTargetWindowEl.textContent = pipeline.targetWindow || '-';
   pipelineWaitingApprovalEl.textContent = pipeline.waitingApproval ? '예' : '아니오';
+  renderDetectedIssue(approvalRequest ? null : pipeline.detectedIssue);
 
   if (pipeline.targetWindow && tmuxWindowEl.value !== pipeline.targetWindow) {
     tmuxWindowEl.value = pipeline.targetWindow;
     refreshTmuxOutput();
   }
 
-  if (pipeline.state === 'manual_required' || pipeline.state === 'waiting_approval') {
-    pipelineGuidanceEl.hidden = false;
-    pipelineGuidanceEl.textContent = pipeline.message || manualRequiredMessage;
-  } else {
+  if (approvalRequest) {
     pipelineGuidanceEl.hidden = true;
     pipelineGuidanceEl.textContent = '';
+    approvalInlinePromptEl.hidden = false;
+    currentApprovalRequest = approvalRequest;
+    openApprovalModal(approvalRequest, false);
+  } else if (pipeline.state === 'manual_review_required') {
+    currentApprovalRequest = null;
+    closeApprovalModal();
+    pipelineGuidanceEl.hidden = false;
+    pipelineGuidanceEl.textContent = pipeline.message || manualRequiredMessage;
+    approvalInlinePromptEl.hidden = true;
+  } else {
+    currentApprovalRequest = null;
+    closeApprovalModal();
+    pipelineGuidanceEl.hidden = true;
+    pipelineGuidanceEl.textContent = '';
+    approvalInlinePromptEl.hidden = true;
   }
 
   pipelineStepsEl.textContent = '';
@@ -378,6 +464,66 @@ function renderPipelineStatus(status) {
   summaryNextActionEl.textContent = pipeline.nextAction || '-';
 }
 
+function getApprovalRequest(status, pipeline) {
+  const issue = pipeline.detectedIssue || {};
+  const isApproval = pipeline.state === 'approval_required' || issue.type === 'approval_required';
+  if (!isApproval) {
+    return null;
+  }
+
+  const targetWindow = issue.window || pipeline.targetWindow;
+  if (!['claude', 'codex'].includes(targetWindow)) {
+    return null;
+  }
+
+  const jobId = status.jobId || jobIdEl.value.trim() || '-';
+  const step = pipeline.step || '-';
+  const rawSummary = issue.summary || pipeline.message || '';
+  const summary = cleanApprovalSummary(targetWindow);
+  const key = `${jobId}:${step}:${targetWindow}:${rawSummary || summary}`;
+  return { key, step, targetWindow, summary };
+}
+
+function cleanApprovalSummary(windowName) {
+  const label = windowName === 'codex' ? 'Codex' : 'Claude';
+  return `${label} 창에서 승인 대기 문구가 감지되었습니다.`;
+}
+
+function openApprovalModal(request, force) {
+  currentApprovalRequest = request;
+  if (!force && lastApprovalKey === request.key) {
+    return;
+  }
+  lastApprovalKey = request.key;
+  approvalModalStepEl.textContent = request.step || '-';
+  approvalModalWindowEl.textContent = request.targetWindow || '-';
+  approvalModalSummaryEl.textContent = request.summary || '-';
+  approvalModalEl.hidden = false;
+}
+
+function closeApprovalModal() {
+  approvalModalEl.hidden = true;
+}
+
+async function sendApprovalModalAction(endpoint) {
+  if (!currentApprovalRequest || !['claude', 'codex'].includes(currentApprovalRequest.targetWindow)) {
+    writeOutput('승인 명령 실패', '승인 대상 창을 확인할 수 없습니다.');
+    return;
+  }
+
+  try {
+    await requestJson(endpoint, {
+      method: 'POST',
+      body: JSON.stringify({ window: currentApprovalRequest.targetWindow })
+    });
+    closeApprovalModal();
+    writeOutput('승인 명령', '명령을 전송했습니다. 상태를 다시 확인합니다.');
+    setTimeout(refreshPipelineStatus, 1000);
+  } catch (error) {
+    writeOutput('승인 명령 실패', error.message);
+  }
+}
+
 function normalizePipelineStatus(payload) {
   if (payload && payload.status && typeof payload.status === 'object') {
     return {
@@ -386,6 +532,7 @@ function normalizePipelineStatus(payload) {
       step: payload.status.step || null,
       targetWindow: payload.status.targetWindow || null,
       waitingApproval: Boolean(payload.status.waitingApproval),
+      detectedIssue: payload.status.detectedIssue || null,
       artifacts: payload.status.artifacts || [],
       gitDiff: payload.status.gitDiff || '-',
       reviewStatus: payload.status.reviewStatus || '-',
@@ -399,11 +546,31 @@ function normalizePipelineStatus(payload) {
     step: payload && payload.currentStep ? payload.currentStep : null,
     targetWindow: null,
     waitingApproval: false,
+    detectedIssue: null,
     artifacts: payload && payload.artifacts ? payload.artifacts : [],
     gitDiff: '-',
     reviewStatus: '-',
     nextAction: '-'
   };
+}
+
+function renderDetectedIssue(issue) {
+  if (!issue) {
+    detectedIssueAlertEl.hidden = true;
+    detectedIssueAlertEl.textContent = '';
+    detectedIssueAlertEl.dataset.type = '';
+    return;
+  }
+
+  const message = detectedIssueMessages[issue.type] || issue.recommendation || 'AI CLI 출력에서 확인이 필요한 상태가 감지되었습니다.';
+  const parts = [
+    message,
+    issue.window ? `창: ${issue.window}` : '',
+    issue.summary ? `감지 내용: ${issue.summary}` : ''
+  ].filter(Boolean);
+  detectedIssueAlertEl.textContent = parts.join('\n');
+  detectedIssueAlertEl.dataset.type = issue.type || 'manual_review_required';
+  detectedIssueAlertEl.hidden = false;
 }
 
 async function loadTmuxWindows() {
@@ -413,12 +580,22 @@ async function loadTmuxWindows() {
   windows.forEach((windowInfo) => {
     const option = document.createElement('option');
     option.value = windowInfo.name;
-    option.textContent = `${windowInfo.name}${windowInfo.available ? '' : ' (세션 없음)'}`;
+    option.dataset.aiRole = windowInfo.aiRole ? 'true' : 'false';
+    option.textContent = `${windowInfo.label || windowInfo.name}${windowInfo.available ? '' : ' (세션 없음)'}`;
     tmuxWindowEl.appendChild(option);
   });
   if (!tmuxWindowEl.value && windows.length > 0) {
     tmuxWindowEl.value = windows[0].name;
   }
+  updateTmuxControlState();
+}
+
+function updateTmuxControlState() {
+  const selected = tmuxWindowEl.options[tmuxWindowEl.selectedIndex];
+  const isAiRole = !selected || selected.dataset.aiRole !== 'false';
+  aiControlButtons.forEach((button) => {
+    button.disabled = !isAiRole;
+  });
 }
 
 async function refreshTmuxOutput() {
@@ -441,6 +618,11 @@ async function sendTmuxControl(title, endpoint) {
   const windowName = tmuxWindowEl.value;
   if (!windowName) {
     writeOutput(`${title} 실패`, '제어할 tmux 창을 선택하세요.');
+    return null;
+  }
+  const selected = tmuxWindowEl.options[tmuxWindowEl.selectedIndex];
+  if (selected && selected.dataset.aiRole === 'false') {
+    writeOutput(`${title} 실패`, 'Manual Shell(git-shell)은 비AI 창입니다. 승인/거절 키 입력은 Claude 또는 Codex 창에서만 사용하세요.');
     return null;
   }
   const result = await runAction(title, () => requestJson(endpoint, {

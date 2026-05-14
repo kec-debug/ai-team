@@ -1,6 +1,6 @@
 # 설치 및 설정 가이드 (Setup)
 
-이 저장소는 로컬 AI 개발팀(tmux 기반)을 시작 / 종료 / 관리하는 컨트롤 센터입니다. 처음 사용한다면 아래 순서대로 따라 해주세요.
+이 저장소는 로컬 Claude + Codex 작업 흐름을 시작 / 종료 / 관리하는 컨트롤 센터입니다. 처음 사용한다면 아래 순서대로 따라 해주세요.
 
 ## 1. 필요한 도구
 
@@ -10,7 +10,6 @@
 tmux -V
 git --version
 gh --version       # GitHub CLI
-gemini --version   # Gemini CLI
 claude --version   # Anthropic Claude CLI
 codex --version    # Codex CLI
 ```
@@ -60,11 +59,11 @@ source /절대/경로/ai-team/scripts/ai-team-aliases.sh
 
 | alias | 동작 |
 |-------|------|
-| `ai-team [PROJECT_DIR]` | AI 팀 tmux 세션 시작 (이미 있으면 attach) |
+| `ai-team [PROJECT_DIR]` | Claude + Codex tmux 세션 시작 (이미 있으면 attach) |
 | `ai-attach` | 실행 중인 세션에 다시 붙기 |
 | `ai-status` | 세션 상태 확인 |
 | `ai-stop` | 세션 종료 (확인 후) |
-| `ai-job PROJECT_DIR JOB_ID` | 새 작업 폴더 생성 |
+| `ai-job PROJECT_DIR JOB_ID` | 새 Claude + Codex 작업 폴더 생성 |
 
 ## 5. 첫 실행
 
