@@ -60,7 +60,7 @@ def test_strategy_result_is_not_executable_order(settings, make_snapshot):
 def test_no_market_order_generated(settings, make_snapshot):
     result = PremarketGapVolumeBreakoutStrategy(settings).evaluate(make_snapshot())
     assert result.non_executable_order_intent.order_type == OrderType.LIMIT
-    assert "MARKET" not in OrderType.__members__
+    assert OrderType.MARKET.value == "market"
 
 
 def test_blocked_candidate_does_not_reach_oms(settings, make_snapshot):

@@ -84,8 +84,7 @@ def test_preflight_rejects_kill_switch_engaged(settings):
 
 
 def test_preflight_rejects_non_limit_order_type(settings):
-    assert "MARKET" not in OrderType.__members__
-    bad_order = _broker_order(order_type=None)  # type: ignore[arg-type]
+    bad_order = _broker_order(order_type=OrderType.MARKET)
     with pytest.raises(KisOrderRejectedError, match="order_type_not_limit") as exc:
         validate_kis_order_request(_settings(settings), bad_order)
     assert exc.value.reason == "order_type_not_limit"

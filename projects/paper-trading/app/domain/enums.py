@@ -14,6 +14,7 @@ class Side(str, Enum):
 class OrderType(str, Enum):
     LIMIT = "limit"
     STOP_LIMIT = "stop_limit"
+    MARKET = "market"
 
 
 class Session(str, Enum):

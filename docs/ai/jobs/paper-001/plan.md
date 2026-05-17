@@ -1,37 +1,67 @@
 ## 1. 요청 요약
 
-**최초의 내부 paper trading MVP 설계.** GUI 작업은 중지하고, 백엔드 차원에서 "**주문이 시작에서 fill까지 흘러가서 cash/positions/PnL이 실제로 갱신되는**" end-to-end 흐름을 완성한다.
+**최초의 내부 paper trading MVP — 확장판.** 사용자가 6개 기능을 모두 포함하기로 결정:
 
-현재 상태 (직접 확인):
+1. LIMIT/STOP_LIMIT 시뮬레이션 (기본)
+2. **MARKET 시뮬레이션** (slippage 0)
+3. **Partial fill** (quote.volume 비율 기반)
+4. **Quote staleness 검사** (PaperBroker가 책임)
+5. **Session/장중 시간 고려** (REGULAR 외 fill 거절)
+6. **Multi-currency** (USD/KRW 등 분리, FX 변환은 본 MVP에서 안 함)
 
-- `Strategy → OMS → RiskEngine → PaperBroker` 체인이 이미 wired (`app/oms/manager.py`, `app/risk/engine.py`, `app/broker/paper.py`).
-- 하지만 **`PaperBroker.submit()`이 주문을 받아 `_open_orders`에 넣기만 하고 fill을 만들지 않음**. `tick(quote)` 같은 매칭 메서드 부재.
-- `PortfolioService`는 positions/realized PnL/avg price는 처리하나 **cash balance는 추적하지 않음**, `apply_fill`을 호출하는 곳도 없음 — 즉 portfolio가 broker 결과를 받지 못함.
-- `Fill` 도메인 모델 부재.
-- Order log / Trade log 부재 (dry-run report는 별도 목적).
-- Unrealized PnL이 snapshot에 노출되지 않음(`market_value`만 있음).
-- 242 tests PASS (api-auth-001 land 직후).
+기존 plan(LIMIT-only)에서 scope가 약 2배로 늘어남. 위 5번 multi-currency가 가장 invasive — `Quote`/`Position`/`PortfolioSnapshot`/`PaperAccount`/`Fill` 다 손대야 함. **scope 확인 후 진행 권장** (§ scope 경고 참고).
 
-paper-001은 **위 gap을 닫고 단일 통합 happy-path가 테스트로 검증되는 상태**까지를 정의한다. KIS/Alpaca 실시 quote 연결은 본 job 범위 외 — 테스트가 Quote를 직접 주입.
+### 사전 land 상태 (2026-05-17 commit 시점)
 
-### 안전 원칙 (모든 작업에 적용)
+- 워크트리 깨끗, 242 PASS.
+- Strategy → OMS → RiskEngine → PaperBroker 체인 wired.
+- `PaperBroker.submit()` 작동, fill 시뮬레이션 부재.
+- `PortfolioService`에 positions/realized PnL만, cash/unrealized 부재.
+- `Fill`/`PaperAccount`/Journal/`PaperEngine` 부재.
 
-1. **Paper가 기본**. `Settings.trading_mode` 기본 `PAPER`. 모든 신규 경로 `TradingMode.PAPER`에서만 활성.
-2. **Live는 비활성 유지**. `live_trading_enabled=False` 기본. 본 job은 live 경로 코드 추가 0건.
-3. **LLM은 절대 executable order 못 만듦**. 본 job은 LLM/Agent 코드 추가 0건.
-4. **추천 agent는 `OrderIntent`(non-executable)만 생성**. `OrderIntent`→`Order`→`BrokerOrder` 변환은 OMS만 가능 — 변경 없음.
-5. **Executable order는 OMS만**. `BrokerOrder` 생성 경로 OMS에 국한 — 변경 없음.
-6. **모든 주문은 Strategy → RiskEngine → OMS → PaperBroker 통과** — 변경 없음.
-7. **실 broker API 호출 0건**. `KisBroker`/`KisMarketDataClient`/`KisAccountClient` 본문 미접촉(여전히 `NotImplementedError`).
-8. **실 API 키 0건**. 본 job은 `KIS_*` 키를 읽지 않음.
-9. **`.env` 미접촉**. `.env.example`도 본 job에서는 한 줄 설명만 추가(값/placeholder 0건).
-10. **Live 주문 실행 코드 0건**. `OrderType.MARKET` 부재 유지 — 시장가 시뮬레이션은 본 job 범위 외(이유는 §2 마지막).
+### 안전 원칙 (변경 없음)
+
+1. Paper 기본, live 비활성.
+2. Live는 비활성 유지 — 본 job은 live 경로 코드 추가 0건.
+3. LLM은 절대 executable order 못 만듦.
+4. 추천 agent는 `OrderIntent`(non-executable)만.
+5. Executable order는 OMS만.
+6. 모든 주문은 Strategy → RiskEngine → OMS → PaperBroker 통과.
+7. 실 broker API 호출 0건 — KIS/Alpaca client 본문 미접촉.
+8. 실 API 키 0건.
+9. `.env` 미접촉. `.env.example`은 변수 이름 + 한 줄 설명만.
+10. Live 주문 실행 코드 0건.
 
 추가:
 
-- GUI(`app/api/`, `app/static/`, dashboard) 변경 0건. 본 job은 백엔드 전용.
-- `app/broker/kis*.py` 본문 변경 0건. import만 필요 시 추가 가능하나 권장 안 함.
-- 자동 `git commit` / `push` / `merge` / `deploy` 금지.
+- **`OrderType.MARKET` 도입은 본 job에서 invariant 변경**. 도입 조건은 별도 flag `ALLOW_PAPER_MARKET_ORDERS=true` + `TradingMode=PAPER` + `live_trading_enabled=False` 동시 만족. 기존 `ALLOW_MARKET_ORDERS`(load_settings reject)는 그대로.
+- GUI 미접촉. dry-run 모듈 미접촉.
+- 자동 commit/push/merge/deploy 금지.
+
+---
+
+## ⚠️ Scope 경고 (사람 결정 필요)
+
+본 plan은 6개 기능을 한 job에 모두 담는다. 예상 규모:
+
+| 항목 | 신규 LoC (대략) | 신규 테스트 |
+| --- | --- | --- |
+| LIMIT/STOP_LIMIT fill + cash + journal + engine (기본) | 약 600 | 약 25 |
+| MARKET fill + flag + RiskEngine 가드 | 약 80 | 약 6 |
+| Partial fill (volume 비율) | 약 100 | 약 8 |
+| Staleness 검사 in broker | 약 30 | 약 3 |
+| Session 검사 | 약 50 | 약 4 |
+| Commission per-share default 변경 | 약 15 | 약 3 |
+| **Multi-currency** (Quote/Position/Snapshot/Account/Fill 다 손댐) | 약 200 | 약 12 |
+| **합계** | **약 1100** | **약 60+** |
+
+이는 한 Codex pass로 가능하긴 하나 review 부담이 큼. 권장 분할(plan §6 사람 액션 아이템에도 동일):
+
+- **paper-001**: LIMIT/STOP_LIMIT + MARKET + cash + journal + engine + staleness + session + commission (multi-currency 제외).
+- **paper-001-mc**: multi-currency만 별도 job. Quote/Position/Snapshot 등 도메인 변경 + FX 정책 결정 포함.
+- **paper-002**: partial fill만 별도 job. 거래량 기반 fill rate + 주문 잔량 추적 + 다중 Fill 시퀀스 테스트.
+
+**본 plan은 일단 6개 모두 포함한 형태로 작성**. 사람이 분할 결정하면 §3/§5/§6에서 해당 섹션 제외 가능. **Codex로 보내기 전에 분할 여부 확정.**
 
 ---
 
@@ -44,315 +74,332 @@ paper-001은 **위 gap을 닫고 단일 통합 happy-path가 테스트로 검증
 ```python
 @dataclass(frozen=True)
 class Fill:
-    symbol: str            # uppercase, ASCII
+    symbol: str
     side: Side
-    quantity: int          # > 0, full quantity of this fill (partial fills allowed via multiple Fills)
-    price: Decimal         # > 0, execution price
-    filled_at: datetime    # tz-aware UTC
-    broker_order_id: str   # echo from OrderAck
-    oms_id: str            # echo from BrokerOrder.oms_id
-    risk_token: str        # echo from BrokerOrder.risk_token
-    commission: Decimal = Decimal("0")  # >= 0
-    source: str = "paper_internal"      # provenance tag, similar to Quote.source
+    quantity: int             # 이 fill에서 실제 채결된 수량 (partial일 수 있음)
+    price: Decimal
+    filled_at: datetime
+    broker_order_id: str
+    oms_id: str
+    risk_token: str
+    currency: str = "USD"     # 본 fill의 가격/commission이 표시된 통화
+    commission: Decimal = Decimal("0")
+    source: str = "paper_internal"
 ```
 
-`__post_init__`: invariants 검증(quantity>0, price>0, commission>=0, symbol uppercase, filled_at tz-aware).
+`__post_init__`에서 invariant 검증(수량/가격>0, commission>=0, currency uppercase ASCII 3자리, tz-aware filled_at).
+
+#### `OrderType.MARKET` 추가 (`app/domain/enums.py`)
+
+```python
+class OrderType(str, Enum):
+    LIMIT = "limit"
+    STOP_LIMIT = "stop_limit"
+    MARKET = "market"  # paper 전용, ALLOW_PAPER_MARKET_ORDERS=true 필요
+```
+
+`OrderIntent.__post_init__` 변경: MARKET이면 `limit_price`가 quote에서 결정되므로 0 허용. 단 `quantity>0` invariant는 그대로.
+
+`OrderIntent` / `Order` / `BrokerOrder`에 `currency: str = "USD"` 필드 추가. 기존 사용처는 default 사용으로 backward compatible.
+
+#### `Quote` 확장 (`app/domain/quote.py`)
+
+기존 frozen `Quote` dataclass에 다음 필드 추가:
+
+```python
+session: Session | None = None       # None이면 broker session 검사 skip
+currency: str = "USD"                # quote의 통화
+```
+
+기존 invariant + 새 invariant:
+
+- `currency`는 3자리 대문자 ASCII (예: `USD`, `KRW`, `HKD`, `JPY`).
+- `session`은 `None` 또는 `Session` enum 멤버.
+
+mvp-023 테스트(`test_quote_model.py`)는 default 값이라 회귀 없음.
 
 #### `PaperAccount` (신규, `app/portfolio/account.py`)
 
 ```python
 @dataclass
 class PaperAccount:
-    cash: Decimal                        # running cash balance
-    starting_cash: Decimal               # immutable for PnL baseline
-    portfolio: PortfolioService          # references positions/PnL
+    cash: dict[str, Decimal]                  # currency → balance
+    starting_cash: dict[str, Decimal]         # immutable baseline
+    portfolio: PortfolioService
     base_currency: str = "USD"
-
-    def equity(self) -> Decimal:
-        snap = self.portfolio.get_snapshot()
-        return self.cash + snap.market_value
-
-    def total_realized_pnl(self) -> Decimal: ...
-    def total_unrealized_pnl(self) -> Decimal: ...
-    def total_pnl(self) -> Decimal: ...    # realized + unrealized
 
     @classmethod
     def from_settings(cls, settings: Settings) -> "PaperAccount":
-        return cls(cash=settings.paper_starting_cash,
-                   starting_cash=settings.paper_starting_cash,
-                   portfolio=PortfolioService())
+        # 기본: {base_currency: settings.paper_starting_cash}
+        # 옵션: settings.paper_starting_cash_by_currency (dict) 우선 사용
+
+    def apply_fill(self, fill: Fill) -> None: ...
+    def equity_per_currency(self) -> dict[str, Decimal]: ...
+    def realized_pnl_per_currency(self) -> dict[str, Decimal]: ...
+    def unrealized_pnl_per_currency(self) -> dict[str, Decimal]: ...
+    # FX 변환은 본 MVP 미지원 — 통화별 분리 보고
 ```
 
-`apply_fill(fill)` 메서드: `portfolio.apply_fill(...)` 위임 + cash 차감/증가 + commission 차감.
+`apply_fill`은 fill.currency 키에 대해 cash 차감/가산. 해당 통화 cash가 없으면 `PaperAccountError("currency_not_funded")`. 부족 시 `PaperAccountError("insufficient_cash")`.
 
-- BUY: `cash -= fill.quantity * fill.price + fill.commission`. cash가 음수가 되면 **`PaperAccountError("insufficient_cash")`** raise. fill은 적용되지 않음.
-- SELL: `cash += fill.quantity * fill.price - fill.commission`.
+### 2.2 PaperBroker fill 시뮬레이션 (`app/broker/paper.py`)
 
-### 2.2 PaperBroker fill 시뮬레이션
+기존 시그니처 보존 + 메서드 추가.
 
-`app/broker/paper.py` 수정. **기존 `submit`/`cancel`/`open_orders`/`positions` 시그니처 보존.**
+#### 새 `__init__`
 
-#### 새 메서드 `tick(quote: Quote) -> list[Fill]`
+```python
+def __init__(
+    self,
+    max_quote_age_seconds: int = 60,
+    allowed_sessions: tuple[Session, ...] = (Session.REGULAR,),
+    max_fill_ratio_of_volume: Decimal = Decimal("0.05"),
+) -> None:
+    self._open_orders: dict[str, BrokerOrder] = {}
+    self._positions: dict[str, int] = {}
+    self._triggered_stops: set[str] = set()
+    self._remaining_qty: dict[str, int] = {}   # broker_order_id → 남은 수량
+    self._max_quote_age_seconds = max_quote_age_seconds
+    self._allowed_sessions = set(allowed_sessions)
+    self._max_fill_ratio = max_fill_ratio_of_volume
+```
+
+#### `tick(quote: Quote) -> list[Fill]`
 
 ```python
 def tick(self, quote: Quote) -> list[Fill]:
-    # 1. quote.symbol에 해당하는 open orders만 본다.
-    # 2. is_stale 검사 (caller가 max_age_seconds 정해서 호출 — 본 메서드는 stale 판단 안 함).
-    # 3. 각 open order에 대해:
-    #    - LIMIT BUY:  quote.ask <= order.limit_price 면 fill at order.limit_price
-    #    - LIMIT SELL: quote.bid >= order.limit_price 면 fill at order.limit_price
-    #    - STOP_LIMIT: 본 MVP에서는 stop 트리거 검사 후 LIMIT처럼 처리
-    #      * BUY:  quote.last >= stop_price 트리거 후 LIMIT BUY 조건 검사
-    #      * SELL: quote.last <= stop_price 트리거 후 LIMIT SELL 조건 검사
-    #      * 트리거된 상태는 broker가 내부 dict (`_triggered_stops`)에 추적
-    # 4. 매치된 주문은 _open_orders에서 제거, Fill 생성하여 반환.
-    # 5. 부분 체결은 본 MVP에서 미지원(주문 전체가 한 번에 fill 또는 미fill).
+    # 1. 입력 검증: quote.last/bid/ask > 0 (아니면 ValueError)
+    # 2. Staleness 검사: quote.is_stale(now, _max_quote_age_seconds) 면 [] 반환
+    # 3. Session 검사: quote.session is not None and quote.session not in _allowed_sessions 면 [] 반환
+    # 4. quote.symbol 매치 open orders 순회:
+    #    - LIMIT BUY: quote.ask <= limit → fill_price = limit_price
+    #    - LIMIT SELL: quote.bid >= limit → fill_price = limit_price
+    #    - STOP_LIMIT: stop 트리거 후 LIMIT 조건
+    #    - MARKET BUY: 즉시 fill, fill_price = quote.ask
+    #    - MARKET SELL: 즉시 fill, fill_price = quote.bid
+    # 5. Partial fill 계산:
+    #    remaining = self._remaining_qty[broker_order_id]
+    #    cap = floor(quote.volume * self._max_fill_ratio)
+    #    fill_qty = min(remaining, cap)  (단, cap이 0이고 quote.volume>0이면 1 최소 보장은 선택)
+    #    fill_qty가 0이면 skip (no Fill emitted)
+    # 6. Fill 생성 (currency = quote.currency).
+    # 7. remaining -= fill_qty. remaining==0이면 _open_orders/triggered_stops에서 제거.
+    # 8. self._positions[symbol] 갱신 (signed 합).
+    # 9. fills list 반환.
 ```
 
-가격 정책(보수적): fill 가격 = order.limit_price (호가에서의 spread 개선 없음). 단순화 + 결정론적 테스트.
+가격 정책:
 
-수량 정책: 전 quantity 한 번에 fill (partial 미지원). 후속 paper-002에서 거래량 기반 partial fill 검토.
+- LIMIT/STOP_LIMIT: fill_price = order.limit_price (스프레드 개선 없음).
+- MARKET: fill_price = quote.ask (BUY) / quote.bid (SELL). **slippage 0** (호가 그대로).
 
-Stale quote 정책: broker는 stale 판단 안 함(runtime이 판단). 단, `quote.last <= 0` 같은 명백한 invalid 입력에는 `ValueError`.
+Partial fill 정책:
 
-#### 새 메서드 `cancel_all(reason: str | None = None) -> int`
+- 한 tick에 최대 `floor(quote.volume * max_fill_ratio)` 채결.
+- 남은 수량은 다음 tick에서 처리.
+- 주문은 fully filled되어야 `_open_orders`에서 제거.
+- `cancel(broker_order_id)`은 remaining 무관 즉시 제거.
 
-세션 종료/킬스위치 발동 시 일괄 취소용.
+#### `submit` 본문 확장
 
-### 2.3 Cash balance 처리
+`submit`에서 MARKET 허용 (RiskEngine이 이미 가드). `_remaining_qty[broker_order_id] = order.quantity` 초기화.
 
-위 §2.1의 `PaperAccount`에 통합. `PortfolioService.apply_fill`은 cash 모름; cash는 `PaperAccount.apply_fill(fill)`이 책임. 분리 이유: `PortfolioService`는 broker-agnostic 도메인, `PaperAccount`는 paper-specific.
+#### `cancel_all(reason: str | None = None) -> int`
 
-### 2.4 Positions / Realized / Unrealized PnL
+기존 plan 그대로.
 
-- Positions: `PortfolioService` 그대로 (이미 OK).
-- Realized PnL: `PortfolioService.snapshot.realized_pnl` 그대로 (이미 OK).
-- Unrealized PnL: **신규 `PortfolioSnapshot.unrealized_pnl: Decimal`** 추가. 계산식:
-  - 각 position에 대해, `last_price`가 있으면 `(last_price - avg_price) * quantity` (signed: 롱은 +/-, 숏도 부호로 처리). `last_price`가 없으면 0.
-- Total PnL: `realized_pnl + unrealized_pnl`. `PortfolioSnapshot.total_pnl` property 추가.
+### 2.3 RiskEngine 확장 (`app/risk/engine.py`)
 
-### 2.5 Orders / Fills
+기존 `evaluate`에 MARKET 분기 추가:
 
-- Orders: 기존 `OrderIntent`/`Order`/`BrokerOrder`/`OrderAck` 그대로.
-- Fills: §2.1의 `Fill` 신규.
-- PaperBroker는 fill을 returns만; 외부에서 PaperAccount에 적용.
+```python
+if intent.order_type is OrderType.MARKET:
+    if not self._settings.allow_paper_market_orders:
+        return RiskDecision(False, "paper_market_orders_disabled")
+    if self._settings.trading_mode != TradingMode.PAPER:
+        return RiskDecision(False, "market_only_in_paper")
+    if self._settings.live_trading_enabled:
+        return RiskDecision(False, "market_disabled_in_live")
+    # quantity check은 공통 분기 통과
+elif intent.order_type not in (OrderType.LIMIT, OrderType.STOP_LIMIT):
+    return RiskDecision(False, "order_type_not_supported")
+```
 
-### 2.6 Basic 시장가/지정가 시뮬레이션
+기존 `intent.order_type not in (OrderType.LIMIT, OrderType.STOP_LIMIT)` 거절은 위로 통합. notional 계산에서 MARKET이면 `quote.last`를 추정치로 사용 — 다만 RiskEngine은 quote에 접근하지 않으므로 MARKET notional 검증은 **skip** (caller가 Strategy 단계에서 `limit_price`를 expected fill price로 채워 보내는 것으로 우회) — Strategy 책임.
 
-본 MVP에서는 **지정가(LIMIT) + 손절지정가(STOP_LIMIT)만** 시뮬레이션. 이유:
+> 주: 더 안전한 대안은 `OrderIntent.limit_price`를 MARKET에서도 expected fill price로 강제하고, RiskEngine notional 검증을 그대로 수행하는 것. 본 plan은 이 대안 채택. MARKET intent에도 `limit_price>0` 요구.
 
-- 코드베이스 기존 invariant: `OrderType.MARKET` enum에 부재. RiskEngine과 PaperBroker 모두 LIMIT/STOP_LIMIT 외 거절. 사용자 요청 §3-10이 이 invariant를 명시적으로 풀라고 하지 않음.
-- 시장가 시뮬레이션은 fill가격 정책(quote.ask로 채울지, 슬리피지를 둘지) 결정이 추가로 필요해 MVP scope 키움.
-- 결정: **본 job은 LIMIT/STOP_LIMIT만**. 시장가 paper 시뮬레이션은 별 job(`paper-002`)에서 `OrderType.MARKET` + `ALLOW_PAPER_MARKET_ORDERS` flag + 슬리피지 모델과 함께 도입 후보.
+### 2.4 Cash + PnL + multi-currency
 
-사용자가 본 MVP에 시장가도 포함하길 원하면 plan 승인 전에 알려달라고 코드ex-task에 적시.
+§2.1의 `PaperAccount` 참고. 핵심:
 
-### 2.7 Risk checks
+- Cash는 `dict[currency, Decimal]`.
+- BUY: `cash[fill.currency] -= notional + commission`. 부족하면 `PaperAccountError("insufficient_cash")`.
+- SELL: `cash[fill.currency] += notional - commission`.
+- 통화별로 분리 보고. FX 변환 없음.
 
-기존 `RiskEngine` 그대로 사용. 본 job은 RiskEngine 본문 변경 없음. 이미 다음 검사 통과:
+#### PortfolioService 수정 (`app/portfolio/service.py`)
 
-- kill switch
-- paper-only
-- live disabled
-- LIMIT/STOP_LIMIT only
-- positive quantity
-- symbol allowlist (set 되어 있을 때만)
-- max order notional
+- `Position`에 `currency: str = "USD"` 필드 추가.
+- `PortfolioSnapshot`:
+  - `realized_pnl: dict[str, Decimal]` (currency별)
+  - `unrealized_pnl: dict[str, Decimal]` (currency별)
+  - `market_value: dict[str, Decimal]` (currency별)
+  - `total_pnl_per_currency()` 메서드
+  - 기존 단일 Decimal 시그니처는 `_legacy` deprecated property로 유지하지 않음 — 본 job의 `PortfolioSnapshot` consumer는 paper-001 신규 코드뿐이라 breaking 허용 (기존 호출자 0건).
+- `apply_fill(symbol, side, quantity, price, commission, currency="USD")` — currency 인자 추가, position.currency 일관성 검증.
+
+기존 `test_portfolio_service.py`가 영향 — 일부 단정은 dict 인덱싱으로 수정 필요. 본 plan §3에 명시.
+
+### 2.5 Quote staleness
+
+`PaperBroker.tick()`이 `quote.is_stale(datetime.now(UTC), self._max_quote_age_seconds)` 직접 호출. stale이면 fills 없음. caller는 stale quote 걸러낼 책임 없음.
+
+설정: `Settings.paper_max_quote_age_seconds` (기본 60).
+
+### 2.6 Session 검사
+
+- `Quote.session` 필드 추가(§2.1).
+- `PaperBroker._allowed_sessions` (기본 `{Session.REGULAR}`).
+- 설정: `Settings.paper_allowed_sessions: tuple[str, ...]` (기본 `("regular",)`). load_settings에서 enum 변환.
+- `quote.session is None` (모르면) → broker 허용 (backward compat).
+- `quote.session`이 allowed_sessions에 없으면 fill 0건, journal에 "rejected: session_not_allowed" 기록 (engine 책임).
+
+### 2.7 Commission
+
+기본값 변경: `PAPER_COMMISSION_USD` → `PAPER_COMMISSION_PER_SHARE`. 기본 `Decimal("0.005")` (IB tier-like). 총 commission = `fill.quantity * commission_per_share` (이 fill의 통화 단위).
+
+설정 이름:
+- `PAPER_COMMISSION_PER_SHARE` (기본 0.005)
+- (선택) `PAPER_COMMISSION_PER_FILL` (기본 0). flat 추가분.
+- 최종 commission = `quantity * per_share + per_fill`.
+
+Multi-currency에서 commission은 fill.currency에 적용. KRW에서 `0.005 KRW`는 비현실적 — 정책 결정: `PAPER_COMMISSION_PER_SHARE_BY_CURRENCY: dict[str, Decimal] | None` 옵션. None이면 모든 통화에 `PAPER_COMMISSION_PER_SHARE` 동일 적용 (기본).
 
 ### 2.8 Order log / Trade log
 
-신규 `app/runtime/paper_journal.py`:
+기존 plan §2.8 그대로. `PaperJournal`. 메모리 default, `PAPER_LOG_DIR` opt-in. TradeLogEntry에 `currency` 필드 추가.
 
-```python
-@dataclass(frozen=True)
-class OrderLogEntry:
-    event: str              # "submitted" | "rejected" | "cancelled" | "filled"
-    at: datetime
-    oms_id: str
-    broker_order_id: str | None
-    symbol: str
-    side: Side
-    quantity: int
-    order_type: OrderType
-    limit_price: Decimal
-    risk_token: str | None
-    detail: str | None      # rejection reason or fill ref
+### 2.9 Runtime 통합 (`app/runtime/paper_engine.py`)
 
-@dataclass(frozen=True)
-class TradeLogEntry:
-    at: datetime
-    oms_id: str
-    broker_order_id: str
-    symbol: str
-    side: Side
-    quantity: int
-    price: Decimal
-    commission: Decimal
-    risk_token: str
-    cash_after: Decimal
-    realized_pnl_after: Decimal
+기존 plan §2.9 + session check 책임 분리.
 
+`PaperEngine.on_quote(quote)`:
 
-class PaperJournal:
-    def __init__(self, log_dir: str | os.PathLike | None = None) -> None:
-        # log_dir가 None이면 메모리 only (default).
-        # log_dir 설정 시 ${log_dir}/orders.jsonl 와 ${log_dir}/trades.jsonl에 append-only JSONL.
-        ...
+1. `broker.tick(quote)` 호출 (broker가 stale/session/partial 다 처리).
+2. fills 각각에 `account.apply_fill(fill)` (실패 시 journal rejected).
+3. journal에 trade + filled order 기록.
 
-    def record_order(self, entry: OrderLogEntry) -> None: ...
-    def record_trade(self, entry: TradeLogEntry) -> None: ...
+`PaperEngine.submit_intents(intents)`: 기존 그대로.
 
-    @property
-    def orders(self) -> list[OrderLogEntry]: ...   # in-memory snapshot
-    @property
-    def trades(self) -> list[TradeLogEntry]: ...
-```
+### 2.10 환경변수 (값 없이 이름만)
 
-기본 메모리 only. `PAPER_LOG_DIR` env var 설정 시 disk 영속화. 파일 권한 0644(secrets 미포함이라 0600 불요).
+기존 + 신설:
 
-### 2.9 Runtime 통합
+- `TRADING_MODE`, `LIVE_TRADING_ENABLED`, `PAPER_STARTING_CASH`, `MAX_ORDER_NOTIONAL_USD`, `MAX_OPEN_POSITIONS`, `SYMBOL_ALLOWLIST`, `ALLOW_MARKET_ORDERS`, `KILL_SWITCH_ENGAGED` (기존)
+- `ALLOW_PAPER_MARKET_ORDERS` — 기본 `false`. paper에서 MARKET 활성.
+- `PAPER_COMMISSION_PER_SHARE` — 기본 `0.005`.
+- `PAPER_COMMISSION_PER_FILL` — 기본 `0`.
+- `PAPER_LOG_DIR` — 기본 미설정.
+- `PAPER_FILL_POLICY` — 기본 `"limit"`. 본 MVP는 `limit`만 허용. MARKET은 `OrderType`으로 결정되지 `fill_policy`로 결정되지 않음.
+- `PAPER_MAX_QUOTE_AGE_SECONDS` — 기본 `60`.
+- `PAPER_ALLOWED_SESSIONS` — 기본 `regular`. 쉼표 분리 (예: `regular,pre_market`).
+- `PAPER_MAX_FILL_RATIO_OF_VOLUME` — 기본 `0.05`. 0.05 = 5%.
+- `PAPER_STARTING_CASH_BY_CURRENCY` — 기본 미설정. JSON 또는 `USD=100000,KRW=130000000` 형태. 미설정 시 `{base_currency: PAPER_STARTING_CASH}`.
+- `PAPER_BASE_CURRENCY` — 기본 `USD`.
 
-기존 `PaperRunner`(`app/runtime/paper_runner.py`)와 별개로 **fill까지 완결하는 새 runtime** 추가:
+### 2.11 테스트
 
-신규 `app/runtime/paper_engine.py`:
-
-```python
-class PaperEngine:
-    def __init__(self, settings, strategy, oms, broker: PaperBroker,
-                 account: PaperAccount, journal: PaperJournal) -> None: ...
-
-    def submit_intents(self, intents: list[OrderIntent]) -> list[OrderAck]:
-        # for each intent: OMS.place → record OrderLogEntry("submitted"/"rejected") → return list of acks (or skip rejections)
-
-    def on_quote(self, quote: Quote) -> list[Fill]:
-        # 1. broker.tick(quote) → list[Fill]
-        # 2. for each fill:
-        #     - account.apply_fill(fill)  (raises if insufficient cash → record OrderLogEntry("rejected") and skip)
-        #     - journal.record_trade(...)
-        #     - journal.record_order(OrderLogEntry("filled", ...))
-        # 3. return fills
-```
-
-이는 dry-run controller와 별개의 단순 동기 엔진. dry-run은 그대로.
-
-### 2.10 Test cases
-
-신규 테스트 파일:
-
-| 파일 | 핵심 단정 |
+| 파일 | 단정 |
 | --- | --- |
-| `tests/test_fill_model.py` | `Fill` 도메인 invariants (quantity/price/commission/timezone), frozen 검증 |
-| `tests/test_paper_account.py` | starting cash, BUY 차감, SELL 가산, 부족 시 raise, equity 계산, PnL 합계 |
-| `tests/test_paper_broker_fill.py` | LIMIT BUY/SELL fill 조건, STOP_LIMIT 트리거, 미매치 시 open_orders 유지, cancel_all |
-| `tests/test_paper_journal.py` | 메모리 only 기본, log_dir 설정 시 JSONL append, 권한 0644, 파일 invalid 시 self-heal |
-| `tests/test_portfolio_unrealized_pnl.py` | unrealized 계산, mark_price 후 갱신, last_price 부재 시 0 |
-| `tests/test_paper_engine.py` | submit_intents → OMS 통과, on_quote → fill → account 갱신 → journal 기록, risk reject 경로 |
-| `tests/test_paper_end_to_end.py` | **통합**: Strategy(스텁) → OMS → RiskEngine → PaperBroker → tick → Fill → PaperAccount → Journal. 1 BUY 채결 + 1 SELL 채결로 cycle 닫기. realized PnL 정확. |
-
-기존 테스트:
-
-- `tests/test_paper_broker.py` — 기존 단정 유지 + 신규 메서드 추가 케이스.
-- `tests/test_portfolio_service.py` — 기존 유지 + unrealized_pnl 단정 추가.
-- `tests/test_oms.py` — 변경 없음 (OMS 본문 미접촉).
-- `tests/test_paper_runner.py` — 변경 없음 (PaperRunner 미접촉).
-
-### 2.11 Env vars (값 없이 이름만)
-
-기존 그대로:
-
-- `TRADING_MODE` (= `paper`)
-- `LIVE_TRADING_ENABLED` (= `false`)
-- `PAPER_STARTING_CASH` (`Decimal`, 기존 default 100000)
-- `MAX_ORDER_NOTIONAL_USD`, `MAX_OPEN_POSITIONS`, `SYMBOL_ALLOWLIST` (기존)
-- `ALLOW_MARKET_ORDERS` (기존, `true`면 load_settings reject)
-- `KILL_SWITCH_ENGAGED` (기존)
-
-신설(이 job에서 추가):
-
-- `PAPER_COMMISSION_USD` — 기본 `0`. 모든 fill에 적용되는 평탄 commission. 옵션.
-- `PAPER_LOG_DIR` — 기본 미설정(메모리 only). 설정 시 orders.jsonl + trades.jsonl 영속화.
-- `PAPER_FILL_POLICY` — `limit` (기본). 향후 `aggressive`/`mid` 등 확장 후보. 본 MVP에서는 `limit`만 수용, 다른 값은 reject.
-
-`.env.example`에 위 3개의 이름 + 한 줄 설명만 추가. 값/placeholder 0건.
+| `test_fill_model.py` | invariants + currency 검증 |
+| `test_quote_model.py` (기존 확장) | session/currency 기본값, invariants |
+| `test_order_type_market.py` | enum 멤버, OrderIntent MARKET + limit_price=0 거절, MARKET + limit_price>0 허용 |
+| `test_risk_engine_market.py` | MARKET + flag off → reject, flag on + paper → approve, live + flag on → reject |
+| `test_paper_account.py` | 단일 통화, multi-currency cash dict, currency_not_funded reject, insufficient_cash reject, equity_per_currency |
+| `test_paper_broker_fill.py` | LIMIT/MARKET/STOP_LIMIT × BUY/SELL, partial fill 흐름, 잔량 누적, fully filled되어야 open에서 제거 |
+| `test_paper_broker_staleness.py` | stale quote → 0 fills, age_seconds 경계 |
+| `test_paper_broker_session.py` | session=None 허용, session=REGULAR 허용, session=PRE_MARKET 거절(기본), 설정으로 PRE_MARKET 허용 후 통과 |
+| `test_paper_broker_partial.py` | volume=100 + max_ratio=0.05 → 한 tick에 max 5주, 잔량 다음 tick까지 누적 |
+| `test_paper_journal.py` | 메모리 default, log_dir 영속화, TradeLogEntry.currency 보존 |
+| `test_portfolio_multi_currency.py` | USD + KRW position 동시, per-currency snapshot, unrealized/realized 분리 |
+| `test_portfolio_unrealized_pnl.py` (기존 확장) | dict 시그니처로 갱신 |
+| `test_paper_engine.py` | submit_intents/on_quote 흐름, partial fill 시 1 trade entry per fill |
+| `test_paper_end_to_end.py` | 통합: LIMIT BUY + LIMIT SELL cycle, partial fill 2회로 fully filled, KRW 계좌로 한국 주식 cycle |
+| `test_commission.py` | per_share + per_fill 합산, multi-currency commission 적용 |
+| 기존 `test_paper_broker.py` | tick/cancel_all 케이스 추가, 기존 단정 보존 |
+| 기존 `test_portfolio_service.py` | dict 시그니처 갱신 |
+| 기존 `test_risk_engine.py` (있다면) | MARKET 케이스 추가 |
 
 ### 포함 (In scope) — 요약
 
-위 2.1–2.11 전부.
+§2.1–2.11 전부. 6개 기능 모두.
 
 ### 제외 (Out of scope; 절대 만지지 않음)
 
-- 시장가(`OrderType.MARKET`) 시뮬레이션.
-- KIS/Alpaca 실 quote 연결, KIS HTTP 호출, 시세 fetch.
-- GUI/`app/api/*`/`app/static/*` 변경. `dry_run_report.py` / `dry_run.py` 본문 변경.
-- 새 AI agent / LLM 호출 / 새 추천 모듈.
-- Partial fill, 슬리피지, market impact.
-- Multi-currency. 본 MVP는 USD 단일 통화 가정.
-- 시간외 세션 처리. `Session` enum은 있으나 본 MVP는 세션과 무관하게 quote가 들어오면 매칭.
-- Live trading 활성 경로.
-- `.env` 수정 또는 읽기. 자동 git commit / push / merge / deploy.
+- **FX 변환 / 환율 적용**. 통화별로 분리 보고만. 통합 equity는 본 MVP에서 산출 안 함.
+- 실 시세 연결 (KIS/Alpaca). caller가 Quote 주입.
+- GUI / `app/api/*` / `app/static/*` 변경.
+- dry-run 모듈 (`dry_run.py`, `dry_run_report.py`, `paper_runner.py`) 본문 변경.
+- 새 AI agent / LLM 호출.
+- 슬리피지 모델, market impact, 거래시간 외 처리.
+- `OrderType.STOP` (지정가 없는 stop) — STOP_LIMIT만 유지.
+- Live 활성 경로.
+- `.env` 수정/읽기.
+- 자동 git commit/push/merge/deploy.
 
 ---
 
 ## 3. 수정해야 할 파일
 
-| 파일 | 동작 |
-| --- | --- |
-| `projects/paper-trading/app/domain/fills.py` | 신규 — `Fill` frozen dataclass |
-| `projects/paper-trading/app/portfolio/account.py` | 신규 — `PaperAccount` + `PaperAccountError` |
-| `projects/paper-trading/app/portfolio/service.py` | 수정 — `PortfolioSnapshot.unrealized_pnl`/`total_pnl` 추가 |
-| `projects/paper-trading/app/broker/paper.py` | 수정 — `tick(quote)`, `cancel_all`, 내부 `_triggered_stops` |
-| `projects/paper-trading/app/runtime/paper_journal.py` | 신규 — `OrderLogEntry`/`TradeLogEntry`/`PaperJournal` |
-| `projects/paper-trading/app/runtime/paper_engine.py` | 신규 — `PaperEngine` |
-| `projects/paper-trading/app/config.py` | 수정 — `PAPER_COMMISSION_USD`, `PAPER_LOG_DIR`, `PAPER_FILL_POLICY` 추가 |
-| `projects/paper-trading/.env.example` | 신설 3개 변수 이름 + 한 줄 설명 |
-| `projects/paper-trading/README.md` | `## Paper trading MVP (paper-001)` 단락 추가 |
-| `projects/paper-trading/tests/test_fill_model.py` | 신규 |
-| `projects/paper-trading/tests/test_paper_account.py` | 신규 |
-| `projects/paper-trading/tests/test_paper_broker_fill.py` | 신규 |
-| `projects/paper-trading/tests/test_paper_journal.py` | 신규 |
-| `projects/paper-trading/tests/test_portfolio_unrealized_pnl.py` | 신규 |
-| `projects/paper-trading/tests/test_paper_engine.py` | 신규 |
-| `projects/paper-trading/tests/test_paper_end_to_end.py` | 신규 (통합) |
-| `projects/paper-trading/tests/test_paper_broker.py` | 기존 + tick/cancel_all 케이스 |
-| `projects/paper-trading/tests/test_portfolio_service.py` | 기존 + unrealized 단정 |
-| `docs/ai/jobs/paper-001/patch.md` | 신규 — Codex 적용 요약 |
+### 신규
 
-**미변경 (절대)**:
-`app/api/*`, `app/static/*`, `app/main.py`, `app/strategy/*`, `app/runtime/dry_run.py`, `app/runtime/dry_run_report.py`, `app/runtime/paper_runner.py`, `app/oms/manager.py`, `app/risk/engine.py`, `app/broker/{base.py, kis*.py, alpaca_paper.py}`, `app/domain/{enums.py, orders.py, market.py, quote.py}`, `.env`, `.gitignore`, `docs/kis/*`, `docs/ai/MASTER_TRADING_ROADMAP.md`, `prompts/*`, `scripts/*`, `imports/*`, mvp-001..api-auth-001 산출물.
+- `app/domain/fills.py`
+- `app/portfolio/account.py`
+- `app/runtime/paper_journal.py`
+- `app/runtime/paper_engine.py`
+- 15개+ 신규 테스트 파일 (§2.11)
+
+### 수정
+
+- `app/domain/enums.py` — `OrderType.MARKET` 추가.
+- `app/domain/orders.py` — `OrderIntent`/`Order`/`BrokerOrder`에 `currency: str = "USD"` 추가.
+- `app/domain/quote.py` — `session: Session | None = None`, `currency: str = "USD"` 추가 + invariants.
+- `app/broker/paper.py` — `tick`/`cancel_all`/`_remaining_qty`/MARKET 분기/staleness/session 검사.
+- `app/risk/engine.py` — MARKET 분기 추가.
+- `app/portfolio/service.py` — `Position.currency`, `Snapshot`의 PnL/market_value dict화, `apply_fill` currency 인자.
+- `app/config.py` — 위 §2.10 신설 환경변수 7개 추가 + load 로직.
+- `.env.example` — 신설 변수 이름 + 한 줄 설명만.
+- `README.md` — paper-001 단락.
+- 기존 테스트 일부 (§2.11 — `test_portfolio_service`, `test_paper_broker`, `test_risk_engine` 등).
+- `docs/ai/jobs/paper-001/patch.md` (Codex 작성).
+
+### 미변경 (절대)
+
+`app/api/*`, `app/static/*`, `app/main.py`, `app/strategy/*`, `app/runtime/{dry_run.py, dry_run_report.py, paper_runner.py}`, `app/oms/manager.py`, `app/broker/{base.py, kis*.py, alpaca_paper.py, kis_quote_mapper.py}`, `.env`, `.gitignore`, `docs/kis/*`, `docs/ai/MASTER_TRADING_ROADMAP.md`, `prompts/*`, `scripts/*`, `imports/*`, 이전 모든 mvp 산출물.
 
 ---
 
 ## 4. Codex 구현 지시문
 
-상세 본문은 `docs/ai/jobs/paper-001/codex-task.md`에 박혀 있음. 요점:
+`docs/ai/jobs/paper-001/codex-task.md`에 본문까지 박힌 형태로 제공할 예정. 본 plan 승인 후 codex-task 재작성.
 
-1. **§3 파일 목록만 변경.** 그 외 0건. 특히 GUI/api/static/strategy/runtime(dry_run*)/oms/risk/domain(enums/orders/market/quote)/broker(base/kis*/alpaca_paper) 본문 미접촉.
-2. **LIMIT + STOP_LIMIT만** 시뮬레이션. `OrderType.MARKET` 도입 금지.
-3. **fill가격 = order.limit_price** (단순 결정론). 슬리피지 0.
-4. **Partial fill 금지** — 전 quantity 한 번에 fill 또는 0.
-5. **Cash 부족 시 fill 거절** + `OrderLogEntry("rejected", detail="insufficient_cash")`. 주문은 broker open에서 빠지지만 PortfolioService 미변경.
-6. **메모리 default**. `PAPER_LOG_DIR` 설정 시에만 JSONL append.
-7. **테스트가 외부 네트워크/시세 0건 호출**. Quote는 명시적으로 주입.
-8. **secrets 0건**. fake values만 사용. 새 파일에 `appkey`/`appsecret`/`Bearer eyJ` 패턴 0건.
-9. **자동 commit/push/merge/deploy 금지**.
+핵심 골격(§K-style 적용 절차):
+
+1. §3 파일 목록만 변경. 그 외 0건.
+2. **MARKET 도입 가드 3중**: `ALLOW_PAPER_MARKET_ORDERS=true` + `TradingMode=PAPER` + `live_trading_enabled=False`. 셋 중 하나라도 깨지면 RiskEngine reject.
+3. Partial fill은 **한 tick에서 1 주문당 최대 1 fill** (volume*ratio 이내). 다음 tick에 잔량 처리.
+4. Multi-currency는 **FX 변환 없이 dict 분리**. equity 통합 계산 없음.
+5. Quote에 `session`/`currency` 추가 — 기존 코드/테스트는 default로 backward compatible.
+6. PortfolioSnapshot의 realized/unrealized/market_value가 **dict로 시그니처 변경**. 기존 호출자 update 필요(`test_portfolio_service.py` 등).
+7. 외부 HTTP 라이브러리 0건. fake 값만 사용. secrets/key 0건.
+8. 자동 commit/push/merge/deploy 0건.
 
 ---
 
 ## 5. 테스트 기준
 
-### 5.1 Unit + Integration
-
-| 카테고리 | 파일 | PASS 기준 |
-| --- | --- | --- |
-| Fill 모델 | `test_fill_model.py` | invariant 4개, frozen, source 기본값 |
-| PaperAccount | `test_paper_account.py` | starting cash, BUY/SELL cash 변화, commission, insufficient_cash raise, equity, total_pnl |
-| Broker fill | `test_paper_broker_fill.py` | LIMIT BUY 매치 / 미매치, LIMIT SELL 매치, STOP_LIMIT 트리거 → fill, cancel_all, ValueError on invalid quote |
-| Journal | `test_paper_journal.py` | 메모리 only, log_dir 설정 시 두 JSONL append, append-only (기존 라인 변경 0), 권한 0644, invalid 라인 무시 |
-| Unrealized PnL | `test_portfolio_unrealized_pnl.py` | 롱/숏 양방향, last_price 갱신 후 변화, last_price 부재 시 0, frozen positions에서 일관 |
-| Engine | `test_paper_engine.py` | submit_intents 성공/risk reject 경로, on_quote 후 fill 흐름, journal 기록 누락 0, account 잔액 일치 |
-| End-to-end | `test_paper_end_to_end.py` | stub Strategy → 2개 intent → OMS 통과 → broker submit → 2번 tick → BUY fill → SELL fill → realized PnL 정확 + cash 일치 + journal 4개 entry (2 submit + 2 fill) |
-
-### 5.2 회귀
+### 5.1 회귀
 
 ```bash
 cd /root/ai-dev-center/projects/ai-team/projects/paper-trading
@@ -360,20 +407,20 @@ cd /root/ai-dev-center/projects/ai-team/projects/paper-trading
 .venv/bin/python -m pytest -p no:cacheprovider
 ```
 
-- 기존 242 + 신규 약 25–35 모두 PASS.
+- 기존 242 + 신규 약 60+ 모두 PASS.
+- 기존 dry-run / KIS / GUI / KIS_1 / api-auth-001 테스트 회귀 0건.
 - 외부 네트워크 호출 0건.
-- 기존 dry-run / GUI / KIS 테스트 회귀 0건.
 
-### 5.3 안전 grep (Codex가 patch.md에 기록)
+### 5.2 안전 grep (Codex가 patch.md에 기록)
 
 | 패턴 | 범위 | 기대 |
 | --- | --- | --- |
-| `OrderType.MARKET` 도입 (enum 또는 사용) | 본 job 변경/신설 파일 | 0건 |
+| `LiveTransport` 또는 live mode 활성 코드 | 본 job 변경/신설 | 0건 |
 | `import requests` / `import httpx` / `import aiohttp` / `import urllib3` | 동 | 0건 |
-| `appkey=` / `appsecret=` / `Bearer eyJ` / 실 키 prefix | 동 | 0건 |
-| 10자리 이상 연속 숫자 (계좌번호 패턴) | 동 | 0건 |
-| `live_trading_enabled = True` 또는 `LIVE_TRADING_ENABLED=true` 설정 코드 | 동 | 0건 |
-| `app.api.*` import (GUI 차단 확인) | 신설 `app/runtime/paper_engine.py`, `paper_journal.py` | 0건 |
+| 실 key/secret/Bearer/계좌번호 패턴 | 동 | 0건 |
+| `app.api.*` import (GUI 차단 확인) | 신설 `app/runtime/paper_engine.py`, `paper_journal.py`, `app/broker/paper.py` | 0건 |
+| `dry_run.py` / `dry_run_report.py` / `paper_runner.py` 변경 | 동 | 0건 |
+| FX 변환 함수 또는 환율 상수 | 동 | 0건 (FX 변환 0건) |
 
 ---
 
@@ -381,42 +428,49 @@ cd /root/ai-dev-center/projects/ai-team/projects/paper-trading
 
 ### 콘텐츠
 
-- [ ] `Fill` 모델이 frozen + invariants 검증 + tz-aware 강제.
-- [ ] `PaperAccount.apply_fill`이 cash 차감/가산 + commission + insufficient_cash 거절 모두 처리.
-- [ ] `PaperBroker.tick(quote)`가 LIMIT/STOP_LIMIT 매치 후 `_open_orders`에서 제거 + Fill 반환.
-- [ ] `PaperJournal`이 메모리 default, `PAPER_LOG_DIR` 설정 시 JSONL append-only.
-- [ ] `PortfolioSnapshot.unrealized_pnl` + `total_pnl` 노출.
-- [ ] `PaperEngine`이 submit_intents + on_quote 두 메서드로 full cycle 처리.
-- [ ] End-to-end 통합 테스트가 BUY→SELL cycle을 닫고 realized PnL 일치 검증.
+- [ ] `OrderType.MARKET` 도입 + 3중 가드 (`ALLOW_PAPER_MARKET_ORDERS` + PAPER + !live).
+- [ ] MARKET BUY = quote.ask, MARKET SELL = quote.bid, slippage 0.
+- [ ] Partial fill: `floor(quote.volume * max_fill_ratio)` cap.
+- [ ] `PaperBroker.tick`이 staleness + session 검사 책임.
+- [ ] `Quote`에 `session`/`currency` 옵션 필드 추가, 기존 테스트 회귀 0.
+- [ ] `PaperAccount.cash`가 currency dict.
+- [ ] `Position.currency` + `Snapshot` PnL/market_value dict 시그니처.
+- [ ] FX 변환 0건. 통합 equity 0건.
+- [ ] Journal TradeLogEntry에 `currency`.
+- [ ] commission per-share + per-fill 합산.
+- [ ] End-to-end 테스트가 LIMIT + MARKET + partial + multi-currency cycle 닫음.
 
 ### 안전
 
-- [ ] `OrderType.MARKET` 도입 0건. 시장가 시뮬레이션 코드 0건.
-- [ ] 시뮬레이션이 quote stale 판단을 broker 책임으로 두지 않음 (caller가 결정).
-- [ ] live trading 활성화 변경 0건. `live_trading_enabled` 기본 False 유지.
-- [ ] LLM/Agent가 broker API 직접 호출하는 새 경로 0건.
-- [ ] 모든 새 주문은 `OrderIntent → OMS → RiskEngine → BrokerOrder → PaperBroker` 거침.
-- [ ] PaperBroker가 `BrokerOrder` 외 입력으로 fill 만들지 않음.
+- [ ] `OrderType.MARKET`은 `ALLOW_PAPER_MARKET_ORDERS=true` 없으면 RiskEngine reject.
+- [ ] live trading 활성화 변경 0건.
+- [ ] LLM/Agent의 broker 직접 호출 새 경로 0건.
 - [ ] `KisBroker`/`KisMarketDataClient`/`KisAccountClient`/`KisAuthClient` 본문 변경 0건.
-- [ ] `.env` 읽기/수정 0건. `.env.example`은 변수 이름 + 한 줄 설명만 추가.
-- [ ] GUI 코드(`app/api/`, `app/static/`, dashboard) 변경 0건.
-- [ ] `app/runtime/dry_run.py` / `dry_run_report.py` / `paper_runner.py` 본문 변경 0건.
+- [ ] `.env` 미접촉. `.env.example`은 이름 + 한 줄 설명만.
+- [ ] GUI 미접촉. dry-run 모듈 미접촉.
+- [ ] 외부 HTTP lib 0건.
 
 ### 테스트 / 프로세스
 
-- [ ] 기존 242 PASS + 신규 25–35 PASS.
-- [ ] `compileall` 무오류.
-- [ ] 외부 네트워크 호출 0건.
-- [ ] `patch.md`에 변경 파일 / 안전 grep / 테스트 결과 / commit-skip 확인 기록.
+- [ ] 기존 242 PASS + 신규 60+ PASS.
+- [ ] `compileall` 무오류. 외부 네트워크 0건.
+- [ ] `patch.md`에 변경 / grep / 테스트 / commit-skip 기록.
 - [ ] commit / push / merge / 배포 자동화 0건.
 
-### 사람이 직접 해야 할 후속 액션
+### 사람이 직접 결정해야 할 사항 (Codex 호출 전)
+
+1. **본 plan을 6개 기능 한 번에 보낼지, 분할할지** (scope 경고 §). 권장 분할:
+   - paper-001: MARKET + cash + journal + engine + staleness + session + commission. (multi-currency, partial 제외)
+   - paper-001-mc: multi-currency만.
+   - paper-002: partial fill만.
+2. MARKET 도입의 정책 변경 (저장소 invariant `OrderType.MARKET 부재` 종료) 명시적 승인.
+3. Commission 기본값 `$0.005/share` 적절성 검토.
+
+### 후속 액션 (Codex 적용 후)
 
 1. `git status` / `git diff` 직접 확인 후 staging.
-2. commit 시 `app/domain/fills.py`, `app/portfolio/account.py`, `app/portfolio/service.py`, `app/broker/paper.py`, `app/runtime/paper_journal.py`, `app/runtime/paper_engine.py`, `app/config.py`, `.env.example`, `README.md`, 새/수정 테스트, `docs/ai/jobs/paper-001/`만 staging.
+2. commit 시 §3의 파일만.
 3. 후속 job 후보:
-   - **`paper-002`** — 시장가 시뮬레이션(`OrderType.MARKET` + `ALLOW_PAPER_MARKET_ORDERS` flag + 슬리피지 모델). 별 plan에서 정책 확장 명시.
-   - **`paper-003`** — partial fill, 거래량 기반 fill rate, market impact 모델.
-   - **`paper-004`** — multi-currency 지원.
-   - **`api-market-data-001`** — KIS 현재체결가로 실 Quote 연결 (KIS_1 catalog 활용).
-   - **`paper-001-gui`** — GUI에 PaperAccount/Journal 노출 (사용자가 GUI 재개 신호 보낸 후).
+   - `api-market-data-001` (KIS 현재체결가 → 실 Quote 주입)
+   - `paper-001-gui` (대시보드에 PaperAccount/Journal 노출)
+   - `paper-003` (slippage 모델, market impact)

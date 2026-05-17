@@ -7,11 +7,19 @@ Strategy -> RiskEngine -> OMS -> BrokerAdapter
 ## Safety Rules
 
 - Live trading is disabled in Phase 1.
-- Market orders are not modeled or allowed.
+- Market orders are simulated only when the paper-only triple guard passes.
 - Strategies create non-executable `OrderIntent` candidates only.
 - OMS is the only component that creates broker orders.
 - Alpaca Paper is a stub; no network calls are implemented.
 - `.env` values are local only. This repository contains `.env.example` placeholders only.
+
+## Paper Simulation
+
+`PaperBroker.tick()` owns quote-driven simulation. It refuses stale quotes, ignores quotes outside the configured sessions, and caps each tick's fills to a floor of quote volume times `PAPER_MAX_FILL_RATIO_OF_VOLUME`. Unfilled quantity remains open.
+
+Supported simulated order types are `LIMIT`, `STOP_LIMIT`, and guarded paper-only `MARKET`. `RiskEngine` approves `MARKET` only when `ALLOW_PAPER_MARKET_ORDERS=true`, `TRADING_MODE=paper`, and live trading is disabled. The existing `ALLOW_MARKET_ORDERS=true` startup rejection remains unchanged.
+
+`PaperAccount` stores cash by currency, and `PortfolioService` reports both legacy aggregate Decimal fields and per-currency realized PnL, market value, and unrealized PnL dictionaries. No exchange-rate conversion is performed.
 
 ## Run
 

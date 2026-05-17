@@ -3,10 +3,10 @@
 | Field | Value |
 | --- | --- |
 | Job ID | paper-001 |
-| Title | 내부 paper trading MVP (fill 시뮬레이션 + cash + journal + 통합) |
-| Stage | `claude_planning` → **`codex_implementing` 대기** |
+| Title | 내부 paper trading MVP — 확장판 (6개 기능 일괄) |
+| Stage | `claude_planning` (옵션 B로 plan 재작성) → **`codex_implementing` 대기** |
 | Created (Claude planning) | 2026-05-17 |
-| Last update | 2026-05-17 |
+| Last update | 2026-05-17 (scope 확장: MARKET + partial + staleness + session + commission + multi-currency) |
 | Owner (human) | kec |
 | Depends on | api-auth-001 (land 완료), 기존 PaperBroker/OMS/RiskEngine/PortfolioService skeleton (mvp-001..mvp-022) |
 | Blocks | `paper-002` (시장가 시뮬레이션), `paper-003` (partial fill / slippage), `api-market-data-001` (실 quote 연결, 본 MVP의 Quote 주입 채널을 사용) |
@@ -36,14 +36,20 @@
 - **GUI 미접촉** — `app/api/`, `app/static/`, `app/main.py` 변경 0건. dry-run 모듈도 미접촉.
 - 자동 git commit / push / merge / deploy 0건.
 
-## 핵심 설계 결정
+## 핵심 설계 결정 (확장 후)
 
-- **`PaperBroker.tick(quote)`** — quote가 들어오면 LIMIT/STOP_LIMIT 주문 매치, 결정론적 가격(=limit_price)으로 fill.
-- **`PaperAccount`** — cash + portfolio. BUY는 cash 차감, SELL은 가산, 부족 시 `PaperAccountError("insufficient_cash")` raise.
-- **`PaperJournal`** — orders + trades 메모리 default. `PAPER_LOG_DIR` 설정 시 JSONL append.
-- **`PaperEngine`** — `submit_intents` + `on_quote` 두 메서드로 사이클 완결. `PaperRunner`/`DryRunController`와 별개의 단순 동기 엔진.
-- **Unrealized PnL** — `PortfolioSnapshot.unrealized_pnl` + `total_pnl` 추가.
-- **Partial fill 미지원, 슬리피지 0** — MVP scope 좁히기 위함.
+- **`OrderType.MARKET`** 새 enum 멤버. 3중 가드(`ALLOW_PAPER_MARKET_ORDERS=true` + PAPER + !live)로 RiskEngine 승인. MARKET fill at `quote.ask`/`quote.bid`, slippage 0.
+- **`PaperBroker.tick(quote)`** — quote 입력 시 LIMIT/STOP_LIMIT/MARKET 매치 + staleness 검사 + session 검사 + partial fill(`floor(quote.volume * 0.05)`).
+- **`PaperAccount.cash: dict[currency, Decimal]`** — multi-currency 분리 보관. FX 변환 0건. 통화별 분리 보고.
+- **`PortfolioSnapshot`의 PnL/market_value가 `dict[currency, Decimal]` 시그니처** — 기존 단일 Decimal 사용처 갱신 필요 (test_portfolio_service 등).
+- **`Quote`에 `session: Session | None`, `currency: str = "USD"` 추가** — 기존 코드는 default로 backward compatible.
+- **`PaperJournal`** — orders + trades 메모리 default. `PAPER_LOG_DIR` 설정 시 JSONL append. entry에 `currency` 보존.
+- **`PaperEngine`** — `submit_intents` + `on_quote` 두 메서드로 사이클 완결.
+- **Commission** — `quantity * PAPER_COMMISSION_PER_SHARE + PAPER_COMMISSION_PER_FILL`. 기본 `0.005 / share`.
+
+### Scope 경고
+
+본 plan은 6개 기능을 한 job에 모두 담는다. 예상 규모 약 **1100 LoC + 60+ 테스트**. Codex 한 pass로 가능하지만 review 부담이 크다. 사용자가 "하나로 진행"으로 결정 — paper-001-mc / paper-002 분할 옵션은 사용 안 함.
 
 ## 다음 단계
 

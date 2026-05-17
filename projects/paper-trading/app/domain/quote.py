@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 
+from app.domain.enums import Session
+
 
 @dataclass(frozen=True)
 class Quote:
@@ -16,6 +18,8 @@ class Quote:
     volume: int
     timestamp: datetime
     source: str
+    session: Session | None = None
+    currency: str = "USD"
 
     def __post_init__(self) -> None:
         if not self.symbol or self.symbol != self.symbol.upper():
@@ -32,6 +36,8 @@ class Quote:
             raise ValueError("timestamp must be timezone-aware")
         if not self.source:
             raise ValueError("source must be non-empty")
+        if self.currency != self.currency.upper():
+            raise ValueError("currency must be uppercase")
 
     @property
     def spread_pct(self) -> Decimal:

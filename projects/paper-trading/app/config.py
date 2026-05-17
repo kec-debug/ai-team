@@ -34,11 +34,20 @@ class Settings:
     kis_app_key: str | None = field(default=None, repr=False)
     kis_app_secret: str | None = field(default=None, repr=False)
     allow_market_orders: bool = False
+    allow_paper_market_orders: bool = False
     kill_switch_engaged: bool = False
     kis_order_dry_run: bool = True
     dry_run_reports_dir: str = "reports/dry_run"
     dry_run_max_errors_before_auto_stop: int = 10
     dry_run_max_ticks: int | None = None
+    paper_commission_per_share: Decimal = Decimal("0.005")
+    paper_commission_per_fill: Decimal = Decimal("0")
+    paper_log_dir: str | None = field(default=None, repr=False)
+    paper_max_quote_age_seconds: int = 60
+    paper_allowed_sessions: tuple[str, ...] = ("regular",)
+    paper_max_fill_ratio_of_volume: Decimal = Decimal("0.05")
+    paper_starting_cash_by_currency: dict[str, Decimal] | None = field(default=None, repr=False)
+    paper_base_currency: str = "USD"
     kis_api_mode: str = "mock"
     kis_base_url_paper: str = "https://openapivts.koreainvestment.com:29443"
     kis_base_url_live: str = "https://openapi.koreainvestment.com:9443"
@@ -72,6 +81,35 @@ def _symbols(raw: str | None) -> tuple[str, ...]:
     if not raw:
         return ()
     return tuple(symbol.strip().upper() for symbol in raw.split(",") if symbol.strip())
+
+
+def _session_tuple_env(name: str, default: tuple[str, ...]) -> tuple[str, ...]:
+    raw = os.getenv(name)
+    if raw is None or raw.strip() == "":
+        return default
+    sessions = tuple(session.strip().lower() for session in raw.split(",") if session.strip())
+    return sessions or default
+
+
+def _decimal_dict_env(name: str) -> dict[str, Decimal] | None:
+    raw = os.getenv(name)
+    if raw is None or raw.strip() == "":
+        return None
+    values: dict[str, Decimal] = {}
+    for item in raw.split(","):
+        if not item.strip():
+            continue
+        if "=" not in item:
+            raise ValueError(f"Invalid decimal map item for {name}")
+        currency, amount = item.split("=", 1)
+        currency = currency.strip().upper()
+        if not currency:
+            raise ValueError(f"Invalid currency for {name}")
+        try:
+            values[currency] = Decimal(amount.strip())
+        except InvalidOperation as exc:
+            raise ValueError(f"Invalid decimal for {name}") from exc
+    return values or None
 
 
 def _str_env(name: str) -> str | None:
@@ -137,11 +175,20 @@ def load_settings() -> Settings:
         kis_app_key=_str_env("KIS_APP_KEY"),
         kis_app_secret=_str_env("KIS_APP_SECRET"),
         allow_market_orders=False,
+        allow_paper_market_orders=_bool_env("ALLOW_PAPER_MARKET_ORDERS", False),
         kill_switch_engaged=_bool_env("KILL_SWITCH_ENGAGED", False),
         kis_order_dry_run=_bool_env("KIS_ORDER_DRY_RUN", True),
         dry_run_reports_dir=_str_env("DRY_RUN_REPORTS_DIR") or "reports/dry_run",
         dry_run_max_errors_before_auto_stop=_int_env("DRY_RUN_MAX_ERRORS_BEFORE_AUTO_STOP", 10),
         dry_run_max_ticks=(_int_env("DRY_RUN_MAX_TICKS", 0) or None) if os.getenv("DRY_RUN_MAX_TICKS") else None,
+        paper_commission_per_share=_decimal_env("PAPER_COMMISSION_PER_SHARE", Decimal("0.005")),
+        paper_commission_per_fill=_decimal_env("PAPER_COMMISSION_PER_FILL", Decimal("0")),
+        paper_log_dir=_str_env("PAPER_LOG_DIR"),
+        paper_max_quote_age_seconds=_int_env("PAPER_MAX_QUOTE_AGE_SECONDS", 60),
+        paper_allowed_sessions=_session_tuple_env("PAPER_ALLOWED_SESSIONS", ("regular",)),
+        paper_max_fill_ratio_of_volume=_decimal_env("PAPER_MAX_FILL_RATIO_OF_VOLUME", Decimal("0.05")),
+        paper_starting_cash_by_currency=_decimal_dict_env("PAPER_STARTING_CASH_BY_CURRENCY"),
+        paper_base_currency=_str_env("PAPER_BASE_CURRENCY") or "USD",
         kis_api_mode=kis_api_mode,
         kis_base_url_paper=_str_env("KIS_BASE_URL_PAPER") or "https://openapivts.koreainvestment.com:29443",
         kis_base_url_live=_str_env("KIS_BASE_URL_LIVE") or "https://openapi.koreainvestment.com:9443",

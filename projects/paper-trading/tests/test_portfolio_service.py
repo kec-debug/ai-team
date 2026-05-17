@@ -30,6 +30,22 @@ def test_portfolio_service_updates_market_value_from_marks():
 
     snapshot = portfolio.get_snapshot()
     assert snapshot.market_value == Decimal("110")
+    assert snapshot.unrealized_pnl == Decimal("10")
+    assert snapshot.market_value_by_currency["USD"] == Decimal("110")
+    assert snapshot.unrealized_pnl_by_currency["USD"] == Decimal("10")
+
+
+def test_portfolio_service_tracks_per_currency_without_conversion():
+    portfolio = PortfolioService()
+    portfolio.apply_fill("AAPL", Side.BUY, 1, Decimal("100"), currency="USD")
+    portfolio.apply_fill("7203", Side.BUY, 2, Decimal("50"), currency="JPY")
+
+    snapshot = portfolio.get_snapshot()
+    assert snapshot.market_value_by_currency == {
+        "USD": Decimal("100"),
+        "JPY": Decimal("100"),
+    }
+    assert snapshot.market_value == Decimal("200")
 
 
 def test_portfolio_service_rejects_invalid_fills():

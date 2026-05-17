@@ -24,8 +24,15 @@ class RiskEngine:
             return RiskDecision(False, "paper_trading_required")
         if self._settings.live_trading_enabled:
             return RiskDecision(False, "live_trading_disabled")
-        if intent.order_type not in (OrderType.LIMIT, OrderType.STOP_LIMIT):
-            return RiskDecision(False, "market_orders_disabled")
+        if intent.order_type == OrderType.MARKET:
+            if not self._settings.allow_paper_market_orders:
+                return RiskDecision(False, "paper_market_orders_disabled")
+            if self._settings.trading_mode != TradingMode.PAPER:
+                return RiskDecision(False, "paper_trading_required")
+            if self._settings.live_trading_enabled:
+                return RiskDecision(False, "live_trading_disabled")
+        elif intent.order_type not in (OrderType.LIMIT, OrderType.STOP_LIMIT):
+            return RiskDecision(False, "unsupported_order_type")
         if intent.quantity <= 0:
             return RiskDecision(False, "quantity_must_be_positive")
         if self._settings.symbol_allowlist and intent.symbol not in self._settings.symbol_allowlist:

@@ -13,6 +13,7 @@ class OrderIntent:
     order_type: OrderType
     limit_price: Decimal
     stop_price: Decimal | None = None
+    currency: str = "USD"
     client_tag: str | None = None
     quote_timestamp: datetime | None = None
 
@@ -23,6 +24,8 @@ class OrderIntent:
             raise ValueError("quantity must be positive")
         if self.limit_price <= 0:
             raise ValueError("limit_price must be positive")
+        if self.currency != self.currency.upper():
+            raise ValueError("currency must be uppercase")
 
 
 @dataclass(frozen=True)
@@ -35,6 +38,7 @@ class Order:
     risk_token: str
     created_at: datetime
     stop_price: Decimal | None = None
+    currency: str = "USD"
     client_tag: str | None = None
 
 
@@ -50,6 +54,7 @@ class BrokerOrder:
     oms_id: str
     submitted_at: datetime
     stop_price: Decimal | None = None
+    currency: str = "USD"
     client_tag: str | None = None
     quote_timestamp: datetime | None = None
 
