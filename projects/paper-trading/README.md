@@ -237,3 +237,105 @@ curl http://127.0.0.1:8000/reports/dry-run/latest
 - `claude_review_input.md` - Claude/Codex가 전략 개선 plan을 작성할 때 참고할 입력 문서
 
 `reports/`는 프로젝트 `.gitignore`로 무시되므로 분석 산출물도 commit되지 않습니다. 응답/리포트에 KIS app key/secret/account 원문은 포함하지 않으며 `dump_safe` 가드가 credential-like key를 차단합니다.
+
+## 초보자용 실행 방법 (mvp-020)
+
+`scripts/` 아래 helper는 paper trading 안전 기본값을 shell에서 강제합니다. `.env`에 다른 값이 있어도 스크립트 실행 환경에서는 `TRADING_MODE=paper`, `LIVE_TRADING_ENABLED=false`, `ALLOW_MARKET_ORDERS=false`, `KIS_ORDER_DRY_RUN=true`가 우선합니다.
+
+```bash
+cd /root/ai-dev-center/projects/ai-team/projects/paper-trading
+./scripts/start_server.sh
+```
+
+다른 터미널에서:
+
+```bash
+./scripts/status.sh
+./scripts/start_dry_run.sh
+./scripts/tick.sh
+./scripts/analyze.sh
+./scripts/stop_dry_run.sh
+```
+
+한 번에 기본 흐름을 확인하려면:
+
+```bash
+./scripts/smoke_check.sh
+```
+
+| 스크립트 | 설명 |
+| --- | --- |
+| `scripts/start_server.sh` | `127.0.0.1`에서 FastAPI 서버를 실행합니다. |
+| `scripts/status.sh` | `/paper/status`와 `/paper/dry-run/status`를 조회합니다. |
+| `scripts/start_dry_run.sh` | dry-run run을 시작합니다. |
+| `scripts/tick.sh` | dry-run이 멈춰 있으면 먼저 시작하고 빈 snapshot tick을 실행합니다. |
+| `scripts/stop_dry_run.sh` | dry-run run을 정지합니다. |
+| `scripts/analyze.sh` | 최신 dry-run 리포트를 분석하고 `analysis_report.md` 경로를 출력합니다. |
+| `scripts/smoke_check.sh` | status, start, tick, analyze, latest, stop 순서로 빠른 확인을 실행합니다. |
+
+스크립트는 `.env`를 출력하지 않고, KIS app key/secret/account/token 원문을 echo하지 않습니다. 서버 응답도 기존 API의 sanitized 상태값만 표시합니다.
+
+## 브라우저 대시보드 (mvp-021)
+
+서버 실행 후 브라우저에서 `http://127.0.0.1:8000/dashboard`를 열면 paper trading 상태, KIS 상태, dry-run 상태, 최신 분석 리포트를 한 화면에서 확인할 수 있습니다. 대시보드는 동일 origin의 안전 endpoint만 호출하며, live trading 활성화 버튼, 시장가 주문 버튼, 실제 주문 버튼은 제공하지 않습니다.
+
+```bash
+cd /root/ai-dev-center/projects/ai-team/projects/paper-trading
+./scripts/start_server.sh
+# then open:
+# http://127.0.0.1:8000/dashboard
+```
+
+표시되는 credential 관련 값은 서버가 이미 sanitize한 상태 필드와 masked account뿐이며, KIS app key/secret/account/token 원문은 HTML/JS에 포함하지 않습니다.
+
+## .env 자동 로딩 (mvp-022)
+
+`load_settings()`는 현재 작업 디렉터리와 무관하게 `projects/paper-trading/.env`를 명시적으로 찾습니다. 서버를 어디서 실행하더라도 paper-trading 프로젝트의 `.env`만 자동 로딩 대상이며, 파일이 없으면 기존 shell 환경값과 기본값으로 동작합니다.
+
+권장 실행 방법:
+
+```bash
+cd /root/ai-dev-center/projects/ai-team/projects/paper-trading
+./scripts/start_server.sh
+```
+
+직접 uvicorn을 실행해야 하면 외부 노출을 피하기 위해 loopback 주소를 사용합니다.
+
+```bash
+cd /root/ai-dev-center/projects/ai-team/projects/paper-trading
+uvicorn app.api.server:app --host 127.0.0.1 --port 8000
+```
+
+`.env` 로딩은 `override=False`로 수행됩니다. 따라서 shell에서 안전 기본값을 export한 경우 shell 값이 `.env`보다 우선합니다.
+
+```bash
+export TRADING_MODE=paper
+export LIVE_TRADING_ENABLED=false
+export ALLOW_MARKET_ORDERS=false
+export KIS_ORDER_DRY_RUN=true
+```
+
+서버를 `0.0.0.0`에 바인딩하는 방식은 로컬 검증 기본값으로 권장하지 않습니다. 과거 `KIS_PAPER_*` 이름을 쓰던 로컬 설정은 채팅이나 로그에 값을 붙여 넣지 말고, 로컬 환경에서 `KIS_*` 이름으로 별도 매핑한 뒤 사용합니다.
+
+## KIS 시세 조회 준비 (mvp-023)
+
+전략 후보 생성(mvp-024)에 사용할 broker-agnostic `Quote` 도메인 모델이 `app/domain/quote.py`에 추가되었습니다.
+
+- 필드: `symbol`, `last`, `bid`, `ask`, `volume`, `timestamp`, `source`
+- 속성/메서드: `spread_pct` (Decimal 분율), `is_stale(now, max_age_seconds)`
+- `__post_init__`이 모든 invariant를 검증합니다(uppercase symbol, 양수 가격, `ask >= bid`, timezone-aware timestamp).
+- `source` 필드로 출처를 추적합니다(예: `"kis_paper"`, `"alpaca_paper"`, `"synthetic"`).
+
+`app/broker/kis_quote_mapper.py`는 KIS raw 응답을 `Quote`로 변환하는 매퍼 skeleton입니다. KIS Open API 공식 문서값이 부재하므로 본 단계에서는 `NotImplementedError`로 fail-closed 상태를 유지합니다.
+
+필요한 공식 문서값은 [`docs/kis/MISSING_MARKET_DATA_VALUES.md`](../../docs/kis/MISSING_MARKET_DATA_VALUES.md)에 catalog로 정리되어 있습니다. 사용자가 KIS 공식 개발자 포털에서 항목별 `<TBD>`를 채우고 확인 완료 상태로 표시한 뒤에만 별도 mvp에서 매퍼 본문과 `KisMarketDataClient.get_quote` HTTP 호출을 구현합니다.
+
+## API 인증 (api-auth-001)
+
+KIS Open API의 OAuth 토큰 발급/폐기와 안전 HTTP 래퍼를 제공합니다.
+
+- 기본 모드 `KIS_API_MODE=mock`: 네트워크 호출 없음. `KisAuthClient.authenticate()`는 즉시 `KisAuthError`.
+- `KIS_API_MODE=paper`로 설정하고 `KIS_APP_KEY`/`KIS_APP_SECRET`을 `.env`에 두면 `https://openapivts.koreainvestment.com:29443`의 `/oauth2/tokenP`만 호출 가능.
+- `KIS_API_MODE=live`는 api-auth-001 범위에서 fail-closed (`KisConfigError`).
+- 토큰은 메모리 캐시가 기본. `KIS_TOKEN_CACHE_PATH`를 설정하면 0600 권한 JSON 파일로 캐시 (paper 한정).
+- 본 작업은 시세/주문 호출 본문을 추가하지 않습니다. 후속 job 참고.

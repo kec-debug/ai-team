@@ -9,6 +9,7 @@ from decimal import Decimal
 
 from app.broker.kis import (
     KisAccountClient,
+    KisAuthError,
     KisAuthClient,
     KisBroker,
     KisMarketDataClient,
@@ -110,8 +111,10 @@ def test_kis_place_cancel_replace_not_implemented(settings):
     broker = KisBroker(_configured(settings))
     with pytest.raises(KisOrderRejectedError):
         broker.place_order(_broker_order(quantity=0))
-    with pytest.raises(NotImplementedError):
-        broker.place_order(_broker_order())
+    assert broker.place_order(_broker_order()).status == "dry_run"
+    broker_no_dry_run = KisBroker(replace(_configured(settings), kis_order_dry_run=False))
+    with pytest.raises(NotImplementedError, match="order endpoint"):
+        broker_no_dry_run.place_order(_broker_order())
     with pytest.raises(NotImplementedError):
         broker.cancel_order("x")
     with pytest.raises(NotImplementedError):
@@ -120,27 +123,25 @@ def test_kis_place_cancel_replace_not_implemented(settings):
 
 def test_kis_protocol_methods_delegate_to_not_implemented(settings):
     broker = KisBroker(_configured(settings))
-    with pytest.raises(NotImplementedError):
-        broker.submit(_broker_order())
+    assert broker.submit(_broker_order()).status == "dry_run"
     with pytest.raises(NotImplementedError):
         broker.cancel("x")
     with pytest.raises(NotImplementedError):
         broker.open_orders()
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(KisAuthError, match="authentication required"):
         broker.positions()
 
 
 def test_kis_data_methods_not_implemented(settings):
     broker = KisBroker(_configured(settings))
-    for method, args in (
-        ("authenticate", ()),
-        ("refresh_token", ()),
-        ("get_account", ()),
-        ("get_positions", ()),
-        ("get_open_orders", ()),
-        ("get_quote", ("AAPL",)),
-    ):
+    for method in ("authenticate", "refresh_token"):
+        with pytest.raises(KisAuthError, match="mock_mode_no_network"):
+            getattr(broker, method)()
+    for method, args in (("get_open_orders", ()),):
         with pytest.raises(NotImplementedError, match="TODO"):
+            getattr(broker, method)(*args)
+    for method, args in (("get_account", ()), ("get_positions", ()), ("get_quote", ("AAPL",))):
+        with pytest.raises(KisAuthError, match="authentication required"):
             getattr(broker, method)(*args)
 
 
@@ -212,6 +213,16 @@ def test_kis_broker_repr_masks_secrets(settings):
 
 def test_strategy_package_does_not_import_kis():
     root = pathlib.Path(__file__).resolve().parent.parent / "app" / "strategy"
+    pattern = re.compile(r"\bapp\.broker\.kis\b")
+    for path in root.rglob("*.py"):
+        text = path.read_text(encoding="utf-8")
+        assert not pattern.search(text), f"{path} imports app.broker.kis"
+
+
+def test_agent_package_does_not_import_kis_if_present():
+    root = pathlib.Path(__file__).resolve().parent.parent / "app" / "agents"
+    if not root.exists():
+        return
     pattern = re.compile(r"\bapp\.broker\.kis\b")
     for path in root.rglob("*.py"):
         text = path.read_text(encoding="utf-8")

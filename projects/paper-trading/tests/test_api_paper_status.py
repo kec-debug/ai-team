@@ -4,6 +4,9 @@ from app.api.server import create_app
 
 
 KIS_ENV_KEYS = (
+    "TRADING_MODE",
+    "LIVE_TRADING_ENABLED",
+    "ALLOW_MARKET_ORDERS",
     "KIS_ENV",
     "KIS_ACCOUNT_NO",
     "KIS_APP_KEY",
@@ -34,8 +37,10 @@ def test_paper_status_safety_flags():
     assert body["safety"]["strategy_emits_non_executable_only"] is True
 
 
-def test_paper_status_kis_metadata_fields(monkeypatch):
+def test_paper_status_kis_metadata_fields(monkeypatch, tmp_path):
     _clear_kis_env(monkeypatch)
+    monkeypatch.setattr("app.config._project_dir", lambda: tmp_path)
+    (tmp_path / ".env").write_text("", encoding="utf-8")
     with TestClient(create_app()) as client:
         response = client.get("/paper/status")
     assert response.status_code == 200
@@ -116,4 +121,36 @@ def test_paper_status_with_kis_config_masks_account(monkeypatch):
 
     body_text = response.text
     for needle in ("12345678", "fake-key", "fake-secret", "KIS_APP_KEY", "KIS_APP_SECRET"):
+        assert needle not in body_text
+
+
+def test_paper_status_kis_config_loaded_when_env_present(monkeypatch, tmp_path):
+    _clear_kis_env(monkeypatch)
+    monkeypatch.setattr("app.config._project_dir", lambda: tmp_path)
+    (tmp_path / ".env").write_text(
+        "\n".join(
+            (
+                "TRADING_MODE=paper",
+                "LIVE_TRADING_ENABLED=false",
+                "ALLOW_MARKET_ORDERS=false",
+                "KIS_ENV=paper",
+                "KIS_ACCOUNT_NO=87654321",
+                "KIS_APP_KEY=fake-status-app-key",
+                "KIS_APP_SECRET=fake-status-app-secret",
+            )
+        ),
+        encoding="utf-8",
+    )
+
+    with TestClient(create_app()) as client:
+        response = client.get("/paper/status")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["kis_config_loaded"] is True
+    assert body["account_no_masked"].startswith("***")
+    assert body["secret_exposed"] is False
+
+    body_text = response.text
+    for needle in ("87654321", "fake-status-app-key", "fake-status-app-secret"):
         assert needle not in body_text

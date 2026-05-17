@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
 from app.domain.market import StrategyInput
@@ -10,6 +11,8 @@ from app.reports.dry_run_analyzer import analyze_run, find_latest_run_dir, write
 from app.strategy import STRATEGY_NAMES
 
 router = APIRouter()
+
+_DASHBOARD_HTML_PATH = Path(__file__).resolve().parents[1] / "static" / "dashboard.html"
 
 
 class PaperRunRequest(BaseModel):
@@ -33,6 +36,11 @@ class PaperRunResponse(BaseModel):
 @router.get("/healthz")
 def healthz() -> dict[str, bool]:
     return {"ok": True}
+
+
+@router.get("/dashboard", response_class=HTMLResponse)
+def dashboard_page() -> HTMLResponse:
+    return HTMLResponse(content=_DASHBOARD_HTML_PATH.read_text(encoding="utf-8"))
 
 
 @router.get("/paper/status")

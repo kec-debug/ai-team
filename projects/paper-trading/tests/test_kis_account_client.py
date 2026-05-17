@@ -2,7 +2,7 @@ from dataclasses import replace
 
 import pytest
 
-from app.broker.kis import KisAccountClient, KisAuthClient, KisConfigError
+from app.broker.kis import KisAccountClient, KisAuthClient, KisAuthError, KisConfigError
 
 
 def _settings(settings, account_no="12345678"):
@@ -44,7 +44,13 @@ def test_account_client_initial_state_not_loaded(settings):
 
 
 def test_account_client_methods_fail_closed(settings):
-    account = KisAccountClient(_settings(settings), _auth(settings))
+    auth = _auth(settings)
+    account = KisAccountClient(_settings(settings), auth)
+    for method in ("get_account", "get_positions", "get_cash_balance"):
+        with pytest.raises(KisAuthError, match="authentication required"):
+            getattr(account, method)()
+
+    auth._store_token("fake-token", 120)
     for method in ("get_account", "get_positions", "get_cash_balance"):
         with pytest.raises(NotImplementedError, match="official documentation"):
             getattr(account, method)()

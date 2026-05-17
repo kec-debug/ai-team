@@ -20,8 +20,10 @@ def _clear_kis_env(monkeypatch):
         monkeypatch.delenv(key, raising=False)
 
 
-def test_load_settings_default_paper_and_live_disabled(monkeypatch):
+def test_load_settings_default_paper_and_live_disabled(monkeypatch, tmp_path):
     _clear_kis_env(monkeypatch)
+    monkeypatch.setattr("app.config._project_dir", lambda: tmp_path)
+    (tmp_path / ".env").write_text("", encoding="utf-8")
     monkeypatch.setenv("TRADING_MODE", "paper")
     s = load_settings()
     assert s.live_trading_enabled is False
@@ -46,6 +48,76 @@ def test_load_settings_reads_kis_env_vars(monkeypatch):
     assert s.kis_account_no == "fake-account-1"
     assert s.kis_app_key == "fake-app-key"
     assert s.kis_app_secret == "fake-app-secret"
+
+
+def test_load_settings_reads_env_from_project_dir(monkeypatch, tmp_path):
+    _clear_kis_env(monkeypatch)
+    env_dir = tmp_path / "project"
+    env_dir.mkdir()
+    other_dir = tmp_path / "other"
+    other_dir.mkdir()
+    monkeypatch.setattr("app.config._project_dir", lambda: env_dir)
+    (env_dir / ".env").write_text(
+        "\n".join(
+            (
+                "TRADING_MODE=paper",
+                "LIVE_TRADING_ENABLED=false",
+                "ALLOW_MARKET_ORDERS=false",
+                "KIS_ENV=paper",
+                "KIS_ACCOUNT_NO=fake-account-from-file",
+                "KIS_APP_KEY=fake-app-key-from-file",
+                "KIS_APP_SECRET=fake-app-secret-from-file",
+            )
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(other_dir)
+
+    s = load_settings()
+
+    assert s.kis_env == "paper"
+    assert s.kis_account_no == "fake-account-from-file"
+    assert s.kis_app_key == "fake-app-key-from-file"
+    assert s.kis_app_secret == "fake-app-secret-from-file"
+
+
+def test_load_settings_works_without_env_file(monkeypatch, tmp_path):
+    _clear_kis_env(monkeypatch)
+    monkeypatch.setattr("app.config._project_dir", lambda: tmp_path)
+    monkeypatch.setattr("app.config.load_dotenv", lambda *args, **kwargs: False)
+    monkeypatch.setenv("TRADING_MODE", "paper")
+
+    s = load_settings()
+
+    assert s.trading_mode.value == "paper"
+    assert s.kis_env is None
+    assert s.kis_account_no is None
+    assert s.kis_app_key is None
+    assert s.kis_app_secret is None
+
+
+def test_load_settings_does_not_override_existing_shell_env(monkeypatch, tmp_path):
+    _clear_kis_env(monkeypatch)
+    monkeypatch.setattr("app.config._project_dir", lambda: tmp_path)
+    (tmp_path / ".env").write_text(
+        "\n".join(
+            (
+                "TRADING_MODE=paper",
+                "KIS_ENV=live",
+                "KIS_ACCOUNT_NO=fake-account-from-file",
+                "KIS_APP_KEY=fake-app-key-from-file",
+                "KIS_APP_SECRET=fake-app-secret-from-file",
+            )
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("TRADING_MODE", "paper")
+    monkeypatch.setenv("KIS_ENV", "paper")
+
+    s = load_settings()
+
+    assert s.kis_env == "paper"
+    assert s.kis_account_no == "fake-account-from-file"
 
 
 def test_settings_repr_does_not_expose_secrets(monkeypatch):

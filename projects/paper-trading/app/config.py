@@ -1,6 +1,7 @@
 import os
 from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
+from pathlib import Path
 
 from dotenv import load_dotenv
 
@@ -38,6 +39,13 @@ class Settings:
     dry_run_reports_dir: str = "reports/dry_run"
     dry_run_max_errors_before_auto_stop: int = 10
     dry_run_max_ticks: int | None = None
+    kis_api_mode: str = "mock"
+    kis_base_url_paper: str = "https://openapivts.koreainvestment.com:29443"
+    kis_base_url_live: str = "https://openapi.koreainvestment.com:9443"
+    kis_oauth_timeout_seconds: float = 5.0
+    kis_oauth_max_retries: int = 1
+    kis_token_expiry_safety_seconds: int = 60
+    kis_token_cache_path: str | None = field(default=None, repr=False)
 
 
 def _decimal_env(name: str, default: Decimal) -> Decimal:
@@ -81,8 +89,16 @@ def _bool_env(name: str, default: bool) -> bool:
     return raw.strip().lower() in TRUE_VALUES
 
 
+def _project_dir() -> Path:
+    return Path(__file__).resolve().parent.parent
+
+
 def load_settings() -> Settings:
-    load_dotenv()
+    env_file = _project_dir() / ".env"
+    if env_file.is_file():
+        load_dotenv(dotenv_path=env_file, override=False)
+    else:
+        load_dotenv(override=False)
     mode = TradingMode(os.getenv("TRADING_MODE", TradingMode.PAPER.value).lower())
     if mode != TradingMode.PAPER:
         raise ValueError("Phase 1 only supports paper trading")
@@ -95,6 +111,10 @@ def load_settings() -> Settings:
         raise ValueError(
             "ALLOW_MARKET_ORDERS=true is rejected in this phase (market orders disabled)"
         )
+
+    kis_api_mode = _str_env("KIS_API_MODE") or "mock"
+    if kis_api_mode not in {"mock", "paper", "live"}:
+        raise ValueError(f"invalid KIS_API_MODE: {kis_api_mode!r}")
 
     return Settings(
         trading_mode=mode,
@@ -122,4 +142,11 @@ def load_settings() -> Settings:
         dry_run_reports_dir=_str_env("DRY_RUN_REPORTS_DIR") or "reports/dry_run",
         dry_run_max_errors_before_auto_stop=_int_env("DRY_RUN_MAX_ERRORS_BEFORE_AUTO_STOP", 10),
         dry_run_max_ticks=(_int_env("DRY_RUN_MAX_TICKS", 0) or None) if os.getenv("DRY_RUN_MAX_TICKS") else None,
+        kis_api_mode=kis_api_mode,
+        kis_base_url_paper=_str_env("KIS_BASE_URL_PAPER") or "https://openapivts.koreainvestment.com:29443",
+        kis_base_url_live=_str_env("KIS_BASE_URL_LIVE") or "https://openapi.koreainvestment.com:9443",
+        kis_oauth_timeout_seconds=float(_str_env("KIS_OAUTH_TIMEOUT_SECONDS") or "5.0"),
+        kis_oauth_max_retries=int(_str_env("KIS_OAUTH_MAX_RETRIES") or "1"),
+        kis_token_expiry_safety_seconds=int(_str_env("KIS_TOKEN_EXPIRY_SAFETY_SECONDS") or "60"),
+        kis_token_cache_path=_str_env("KIS_TOKEN_CACHE_PATH"),
     )

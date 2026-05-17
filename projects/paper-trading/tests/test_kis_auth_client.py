@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from app.broker.kis import KisAuthClient, KisConfigError
+from app.broker.kis import KisAuthClient, KisAuthError, KisConfigError
 
 
 def _settings(settings):
@@ -52,9 +52,9 @@ def test_auth_client_expired_token_is_not_returned(settings):
 
 def test_auth_client_network_methods_fail_closed(settings):
     auth = KisAuthClient(_settings(settings))
-    with pytest.raises(NotImplementedError, match="official documentation"):
+    with pytest.raises(KisAuthError, match="mock_mode_no_network"):
         auth.authenticate()
-    with pytest.raises(NotImplementedError, match="official documentation"):
+    with pytest.raises(KisAuthError, match="mock_mode_no_network"):
         auth.refresh_token()
 
 
@@ -66,3 +66,28 @@ def test_auth_client_repr_masks_secrets_and_token(settings):
     assert "fake-secret" not in text
     assert "tok-FAKE" not in text
     assert "token=<set>" in text
+
+
+def test_auth_client_default_uses_in_memory_cache(settings):
+    auth = KisAuthClient(_settings(settings))
+    from app.broker.kis_token_cache import InMemoryTokenCache
+
+    assert isinstance(auth._cache, InMemoryTokenCache)  # type: ignore[attr-defined]
+
+
+def test_auth_client_file_cache_is_paper_only(settings, tmp_path):
+    auth = KisAuthClient(replace(_settings(settings), kis_token_cache_path=str(tmp_path / "token.json")))
+    from app.broker.kis_token_cache import InMemoryTokenCache
+
+    assert isinstance(auth._cache, InMemoryTokenCache)  # type: ignore[attr-defined]
+
+    paper_auth = KisAuthClient(
+        replace(
+            _settings(settings),
+            kis_api_mode="paper",
+            kis_token_cache_path=str(tmp_path / "paper-token.json"),
+        )
+    )
+    from app.broker.kis_token_cache import FileTokenCache
+
+    assert isinstance(paper_auth._cache, FileTokenCache)  # type: ignore[attr-defined]

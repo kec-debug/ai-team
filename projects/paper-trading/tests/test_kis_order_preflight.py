@@ -136,5 +136,12 @@ def test_place_order_runs_preflight_before_notimplemented(settings):
 
 def test_place_order_valid_input_reaches_notimplemented(settings):
     broker = KisBroker(_settings(settings))
+    ack = broker.place_order(_broker_order())
+    assert ack.status == "dry_run"
+    assert broker.last_order_preview is not None
+
+
+def test_place_order_valid_input_with_dry_run_disabled_reaches_notimplemented(settings):
+    broker = KisBroker(replace(_settings(settings), kis_order_dry_run=False))
     with pytest.raises(NotImplementedError, match="Pre-flight passed"):
         broker.place_order(_broker_order())
