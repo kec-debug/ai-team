@@ -314,6 +314,8 @@ cd /root/ai-dev-center/projects/ai-team/projects/paper-trading
 
 서버 실행 후 브라우저에서 `http://127.0.0.1:8000/dashboard`를 열면 paper trading 상태, KIS 상태, dry-run 상태, 최신 분석 리포트를 한 화면에서 확인할 수 있습니다. 대시보드는 동일 origin의 안전 endpoint만 호출하며, live trading 활성화 버튼, 시장가 주문 버튼, 실제 주문 버튼은 제공하지 않습니다.
 
+`/dashboard`는 안전 상태, KIS 상태, 수동 모의 주문, 계좌·통화별 PnL, 보유 종목, 최근 체결, 최근 거절 주문, Paper Engine 상태, Dry-run 상태, 최신 리포트 해석을 보여줍니다.
+
 ```bash
 cd /root/ai-dev-center/projects/ai-team/projects/paper-trading
 ./scripts/start_server.sh

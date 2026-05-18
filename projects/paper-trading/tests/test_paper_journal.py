@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 from decimal import Decimal
+import json
 
 from app.domain.enums import Side
 from app.domain.fills import Fill
@@ -22,6 +23,7 @@ def test_paper_journal_records_trade_in_memory():
     journal = PaperJournal()
     journal.record_trade(TradeLogEntry.from_fill(fill))
     assert journal.trades[0].symbol == "AAPL"
+    assert journal.trades[0].side == Side.BUY
 
 
 def test_paper_journal_records_rejected_order():
@@ -33,3 +35,23 @@ def test_paper_journal_records_rejected_order():
         reason="insufficient_cash",
     )
     assert journal.orders[0].reason == "insufficient_cash"
+
+
+def test_paper_journal_persists_trade_side(tmp_path):
+    fill = Fill(
+        broker_order_id="broker",
+        oms_id="oms",
+        symbol="AAPL",
+        side=Side.BUY,
+        quantity=1,
+        price=Decimal("10"),
+        currency="USD",
+        commission=Decimal("0"),
+        liquidity="simulated",
+        filled_at=datetime.now(timezone.utc),
+    )
+    journal = PaperJournal(tmp_path)
+    journal.record_trade(TradeLogEntry.from_fill(fill))
+
+    line = (tmp_path / "trades.jsonl").read_text(encoding="utf-8").strip()
+    assert json.loads(line)["side"] == "buy"

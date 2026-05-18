@@ -30,6 +30,7 @@ def test_get_paper_account():
     assert response.status_code == 200
     body = response.json()
     assert body["cash"]["USD"] == "100000"
+    assert body["starting_cash"]["USD"] == "100000"
     assert body["safety"]["live_trading_enabled"] is False
     assert body["secret_exposed"] is False
 
@@ -77,7 +78,10 @@ def test_post_paper_order_simulate_limit_buy_success():
     assert body["fills"][0]["symbol"] == "AAPL"
     assert account["cash"]["USD"] == "99899.995"
     assert positions["positions"][0]["quantity"] == 1
+    assert isinstance(positions["positions"][0]["unrealized_pnl"], str)
     assert fills["fills"][0]["symbol"] == "AAPL"
+    assert fills["fills"][0]["side"] in ("buy", "sell")
+    assert isinstance(fills["recent_orders"], list)
 
 
 def test_post_paper_order_simulate_insufficient_cash_rejected():
@@ -184,6 +188,7 @@ def test_paper_e2e_responses_do_not_expose_secrets():
             client.get("/paper/positions"),
             client.get("/paper/fills"),
             client.get("/paper/orders"),
+            client.get("/paper/engine/status"),
             client.post("/paper/order/simulate", json=_order_payload()),
         ]
     for response in responses:

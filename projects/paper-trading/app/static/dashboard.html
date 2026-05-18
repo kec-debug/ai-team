@@ -2,30 +2,39 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8">
-<title>Paper Trading Dashboard (mvp-021)</title>
+<title>모의거래 대시보드</title>
 <style>
-  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 1000px; margin: 1rem auto; padding: 0 1rem; color: #222; }
-  h1 { font-size: 1.4rem; margin-bottom: .25rem; }
-  .safety-banner { background: #fff3f3; border: 1px solid #f3b6b6; color: #a40000; padding: .5rem .75rem; border-radius: 4px; margin-bottom: 1rem; font-weight: 600; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 1120px; margin: 1rem auto; padding: 0 1rem; color: #222; }
+  h1 { font-size: 1.5rem; margin-bottom: .25rem; }
+  .safety-banner { background: #fff3f3; border: 1px solid #f3b6b6; color: #8b0000; padding: .65rem .8rem; border-radius: 4px; margin-bottom: 1rem; font-weight: 700; }
   .button-row { display: flex; flex-wrap: wrap; gap: .5rem; margin-bottom: 1rem; }
   .button-row button { padding: .5rem .75rem; border: 1px solid #888; background: #f3f3f3; cursor: pointer; border-radius: 4px; }
   .button-row button:hover { background: #e7e7e7; }
   section { border: 1px solid #ddd; padding: .5rem .75rem; margin-bottom: 1rem; border-radius: 4px; }
   section h2 { font-size: 1.05rem; margin: 0 0 .5rem; }
+  .summary { padding: .65rem .75rem; border-radius: 4px; background: #eef7ee; border: 1px solid #b8d8b8; margin: .5rem 0; font-weight: 600; }
+  .summary.warn { background: #fff7e6; border-color: #e5c57b; }
+  .summary.error { background: #fff0f0; border-color: #e0a0a0; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: .5rem; }
+  label { display: grid; gap: .2rem; font-size: .85rem; color: #444; }
+  input, select { padding: .45rem; border: 1px solid #bbb; border-radius: 4px; font: inherit; }
   table { width: 100%; border-collapse: collapse; font-size: .9rem; }
   table th { text-align: left; width: 38%; color: #555; font-weight: 500; padding: .25rem .5rem; border-bottom: 1px solid #f0f0f0; }
   table td { padding: .25rem .5rem; border-bottom: 1px solid #f0f0f0; font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
   pre { background: #f7f7f7; padding: .5rem; border-radius: 4px; overflow-x: auto; font-size: .8rem; max-height: 280px; }
+  details { margin-top: .5rem; }
+  summary { cursor: pointer; color: #444; }
   .log { color: #555; font-size: .85rem; margin-top: .5rem; }
   .ok { color: #0a7d2c; }
 </style>
 </head>
 <body>
-<h1>Paper Trading Dashboard</h1>
-<div class="safety-banner">paper / dry-run only · live trading disabled · market orders disabled · no real orders</div>
+<h1>모의거래 대시보드</h1>
+<div class="safety-banner">모의거래 전용 · 실거래 꺼짐 · 실제 주문 불가능 · 실제 브로커 호출 없음</div>
 
 <div class="button-row">
   <button id="btn-refresh">상태 새로고침</button>
+  <button id="btn-submit-paper-order">모의 주문 실행</button>
   <button id="btn-start-dry-run">Dry-run 시작</button>
   <button id="btn-tick">Tick 1회 실행</button>
   <button id="btn-stop-dry-run">Dry-run 중지</button>
@@ -34,13 +43,13 @@
 </div>
 
 <section id="paper-status-section">
-  <h2>Paper trading 상태</h2>
+  <h2>안전 상태</h2>
   <table>
-    <tr><th>mode</th><td id="ps-mode">-</td></tr>
-    <tr><th>live_enabled</th><td id="ps-live-enabled">-</td></tr>
-    <tr><th>market_orders_allowed</th><td id="ps-market">-</td></tr>
-    <tr><th>kis_order_dry_run</th><td id="ps-kis-dry-run">-</td></tr>
-    <tr><th>secret_exposed</th><td id="ps-secret-exposed">-</td></tr>
+    <tr><th>현재 모드</th><td id="ps-mode">-</td></tr>
+    <tr><th>실거래 상태</th><td id="ps-live-enabled">-</td></tr>
+    <tr><th>실제 주문 가능 여부</th><td id="ps-real-order">불가능</td></tr>
+    <tr><th>시장가 주문 기본 허용</th><td id="ps-market">-</td></tr>
+    <tr><th>비밀값 노출 여부</th><td id="ps-secret-exposed">-</td></tr>
   </table>
 </section>
 
@@ -56,25 +65,121 @@
   </table>
 </section>
 
+<section id="manual-order-section">
+  <h2>수동 모의 주문</h2>
+  <form id="paper-order-form">
+    <div class="grid">
+      <label>종목 코드 / symbol <input id="order-symbol" name="symbol" value="AAPL" autocomplete="off"></label>
+      <label>매수/매도 / side
+        <select id="order-side" name="side">
+          <option value="buy">BUY</option>
+          <option value="sell">SELL</option>
+        </select>
+      </label>
+      <label>수량 / quantity <input id="order-quantity" name="quantity" type="number" min="1" step="1" value="1"></label>
+      <label>주문 유형 / order_type
+        <select id="order-type" name="order_type">
+          <option value="limit">LIMIT</option>
+          <option value="stop_limit">STOP_LIMIT</option>
+          <option value="market">MARKET</option>
+        </select>
+      </label>
+      <label>지정가 / limit_price <input id="order-limit-price" name="limit_price" type="number" min="0.01" step="0.01" value="100"></label>
+      <label>stop_price <input id="order-stop-price" name="stop_price" type="number" min="0.01" step="0.01"></label>
+      <label>모의 매수호가 / mock_bid <input id="mock-bid" name="mock_bid" type="number" min="0.01" step="0.01" value="99"></label>
+      <label>모의 매도호가 / mock_ask <input id="mock-ask" name="mock_ask" type="number" min="0.01" step="0.01" value="100"></label>
+      <label>모의 현재가 / mock_last <input id="mock-last" name="mock_last" type="number" min="0.01" step="0.01" value="100"></label>
+      <label>거래량 / mock_volume <input id="mock-volume" name="mock_volume" type="number" min="0" step="1" value="100"></label>
+      <label>통화 / currency <input id="order-currency" name="currency" value="USD" autocomplete="off"></label>
+    </div>
+  </form>
+  <div id="paper-order-summary" class="summary warn">아직 실행한 모의 주문이 없습니다.</div>
+  <table>
+    <tr><th>주문 상태</th><td id="order-status-ko">-</td></tr>
+    <tr><th>위험 검사 결과</th><td id="order-riskcheck-ko">-</td></tr>
+    <tr><th>거절 사유</th><td id="order-reject-ko">-</td></tr>
+  </table>
+  <details><summary>원본 JSON 보기</summary><pre id="paper-order-result">{}</pre></details>
+</section>
+
+<section id="quick-demo-section">
+  <h2>바로 모의테스트 해보기</h2>
+  <p>예시 주문은 TEST 10주를 지정가 100에 매수하고, 모의 매도호가 100으로 즉시 체결되도록 입력합니다.</p>
+  <button id="btn-demo-order">예시 모의 주문 실행</button>
+</section>
+
+<section id="paper-account-section">
+  <h2>계좌 / 손익</h2>
+  <table>
+    <tr><th>시작 현금</th><td><table id="acct-starting-cash"><tbody><tr><td>-</td><td>-</td></tr></tbody></table></td></tr>
+    <tr><th>현재 현금 / 통화별 현금</th><td><table id="acct-cash-by-currency"><tbody><tr><td>-</td><td>-</td></tr></tbody></table><span id="acct-cash">-</span></td></tr>
+    <tr><th>실현 손익 / 통화별 실현 손익</th><td><table id="acct-realized-by-currency"><tbody><tr><td>-</td><td>-</td></tr></tbody></table><span id="acct-realized">-</span></td></tr>
+    <tr><th>평가 손익 / 통화별 평가 손익</th><td><table id="acct-unrealized-by-currency"><tbody><tr><td>-</td><td>-</td></tr></tbody></table><span id="acct-unrealized">-</span></td></tr>
+    <tr><th>마지막 오류</th><td id="paper-last-error">-</td></tr>
+  </table>
+</section>
+
+<section id="paper-positions-section">
+  <h2>보유 종목</h2>
+  <div id="positions-count" class="log">보유 종목 수: 0</div>
+  <table id="paper-positions"><tbody><tr><td>보유 종목이 없습니다.</td></tr></tbody></table>
+</section>
+
+<section id="paper-orders-section">
+  <h2>주문 내역</h2>
+  <table id="paper-open-orders"><tbody><tr><td>미체결 주문이 없습니다.</td></tr></tbody></table>
+</section>
+
+<section id="paper-fills-section">
+  <h2>체결 내역</h2>
+  <table id="paper-fills"><tbody><tr><td>체결 내역이 없습니다.</td></tr></tbody></table>
+</section>
+
+<section id="paper-journal-section">
+  <h2>최근 거절 주문</h2>
+  <table id="paper-rejected-orders"><tbody><tr><td>거절된 주문이 없습니다.</td></tr></tbody></table>
+</section>
+
+<section id="paper-engine-section">
+  <h2>Paper Engine 상태</h2>
+  <table>
+    <tr><th>Paper Engine 활성</th><td id="eng-engine-enabled">-</td></tr>
+    <tr><th>Journal 활성</th><td id="eng-journal-enabled">-</td></tr>
+    <tr><th>Persistent 로그 경로</th><td id="eng-journal-log">-</td></tr>
+    <tr><th>마지막 체결 시각</th><td id="eng-last-fill">-</td></tr>
+    <tr><th>마지막 거래 시각</th><td id="eng-last-trade">-</td></tr>
+  </table>
+</section>
+
 <section id="dry-run-status-section">
   <h2>Dry-run 상태</h2>
   <table>
-    <tr><th>running</th><td id="dr-running">-</td></tr>
-    <tr><th>started_at</th><td id="dr-started-at">-</td></tr>
-    <tr><th>last_tick_at</th><td id="dr-last-tick-at">-</td></tr>
-    <tr><th>ticks_total</th><td id="dr-ticks-total">-</td></tr>
-    <tr><th>candidates_seen</th><td id="dr-candidates-seen">-</td></tr>
-    <tr><th>candidates_blocked</th><td id="dr-candidates-blocked">-</td></tr>
-    <tr><th>dry_run_orders_created</th><td id="dr-orders-created">-</td></tr>
-    <tr><th>errors_total</th><td id="dr-errors-total">-</td></tr>
-    <tr><th>last_error</th><td id="dr-last-error">-</td></tr>
+    <tr><th>실행 상태</th><td id="dr-running">-</td></tr>
+    <tr><th>Tick 수</th><td id="dr-ticks-total">-</td></tr>
+    <tr><th>후보 수</th><td id="dr-candidates-seen">-</td></tr>
+    <tr><th>생성된 주문 수</th><td id="dr-orders-created">-</td></tr>
+    <tr><th>오류 수</th><td id="dr-errors-total">-</td></tr>
+    <tr><th>마지막 오류</th><td id="dr-last-error">-</td></tr>
   </table>
 </section>
 
 <section id="report-section">
-  <h2>최신 리포트</h2>
+  <h2>최신 리포트 해석</h2>
   <div id="report-meta" class="log">-</div>
-  <pre id="report-content">(아직 분석되지 않음)</pre>
+  <table>
+    <tr><th>실행 상태</th><td id="report-state">-</td></tr>
+    <tr><th>Tick 수</th><td id="report-ticks">-</td></tr>
+    <tr><th>후보 수</th><td id="report-candidates">-</td></tr>
+    <tr><th>생성된 주문 수</th><td id="report-orders">-</td></tr>
+    <tr><th>체결 수</th><td id="report-fills">-</td></tr>
+    <tr><th>거절 수</th><td id="report-rejected">-</td></tr>
+    <tr><th>오류 수</th><td id="report-errors">-</td></tr>
+  </table>
+  <h3>한글 해석</h3>
+  <div id="report-explanation" class="summary warn">아직 리포트가 없습니다.</div>
+  <h3>다음 행동 제안</h3>
+  <div id="report-suggestions" class="log">-</div>
+  <details><summary>원본 JSON 보기</summary><pre id="report-content">{}</pre></details>
 </section>
 
 <div id="log" class="log"></div>
@@ -84,6 +189,13 @@
 
 const ENDPOINTS = {
   paperStatus: "/paper/status",
+  paperAccount: "/paper/account",
+  paperPositions: "/paper/positions",
+  paperFills: "/paper/fills",
+  paperOrders: "/paper/orders",
+  paperOrderSimulate: "/paper/order/simulate",
+  paperEngineStatus: "/paper/engine/status",
+  paperReportSummary: "/paper/report/summary",
   dryRunStatus: "/paper/dry-run/status",
   dryRunStart: "/paper/dry-run/start",
   dryRunStop: "/paper/dry-run/stop",
@@ -114,6 +226,103 @@ function setText(id, value) {
   }
 }
 
+function setJson(id, value) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = JSON.stringify(value, null, 2);
+}
+
+function boolKo(value, trueText, falseText) {
+  return value ? trueText : falseText;
+}
+
+function setSummary(id, text, level) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = text || "-";
+  el.className = "summary" + (level ? " " + level : "");
+}
+
+function renderCurrencyMap(tableId, map) {
+  const table = document.getElementById(tableId);
+  if (!table) return;
+  const entries = Object.entries(map || {});
+  if (!entries.length) {
+    table.innerHTML = "<tbody><tr><td>-</td><td>-</td></tr></tbody>";
+    return;
+  }
+  table.innerHTML = "<thead><tr><th>통화</th><th>금액</th></tr></thead><tbody>" +
+    entries.map(([currency, amount]) => "<tr><td>" + currency + "</td><td>" + amount + "</td></tr>").join("") +
+    "</tbody>";
+}
+
+function renderPositions(rows) {
+  const table = document.getElementById("paper-positions");
+  const data = rows || [];
+  if (!data.length) {
+    table.innerHTML = "<tbody><tr><td>보유 종목이 없습니다.</td></tr></tbody>";
+    return;
+  }
+  table.innerHTML = "<thead><tr><th>종목</th><th>수량</th><th>평균가</th><th>현재가</th><th>평가금액</th><th>실현 손익</th><th>평가 손익</th><th>통화</th></tr></thead><tbody>" +
+    data.map((p) => "<tr><td>" + p.symbol + "</td><td>" + p.quantity + "</td><td>" + p.avg_price + "</td><td>" + (p.last_price || "-") + "</td><td>" + p.market_value + "</td><td>" + (p.realized_pnl || "0") + "</td><td>" + (p.unrealized_pnl || "0") + "</td><td>" + p.currency + "</td></tr>").join("") +
+    "</tbody>";
+}
+
+function renderOpenOrders(rows) {
+  const table = document.getElementById("paper-open-orders");
+  const data = rows || [];
+  if (!data.length) {
+    table.innerHTML = "<tbody><tr><td>미체결 주문이 없습니다.</td></tr></tbody>";
+    return;
+  }
+  table.innerHTML = "<thead><tr><th>종목</th><th>매수/매도</th><th>수량</th><th>주문 유형</th><th>지정가</th></tr></thead><tbody>" +
+    data.map((o) => "<tr><td>" + o.symbol + "</td><td>" + o.side + "</td><td>" + o.quantity + "</td><td>" + o.order_type + "</td><td>" + o.limit_price + "</td></tr>").join("") +
+    "</tbody>";
+}
+
+function renderFills(rows) {
+  const table = document.getElementById("paper-fills");
+  const data = rows || [];
+  if (!data.length) {
+    table.innerHTML = "<tbody><tr><td>체결 내역이 없습니다.</td></tr></tbody>";
+    return;
+  }
+  table.innerHTML = "<thead><tr><th>종목</th><th>매수/매도</th><th>수량</th><th>체결가</th><th>수수료</th><th>통화</th><th>시간</th></tr></thead><tbody>" +
+    data.map((f) => {
+      const side = f.side === "buy" ? "매수" : (f.side === "sell" ? "매도" : "-");
+      return "<tr><td>" + f.symbol + "</td><td>" + side + "</td><td>" + f.quantity + "</td><td>" + f.price + "</td><td>" + f.commission + "</td><td>" + f.currency + "</td><td>" + f.filled_at + "</td></tr>";
+    }).join("") +
+    "</tbody>";
+}
+
+function renderRejectedOrders(rows) {
+  const table = document.getElementById("paper-rejected-orders");
+  const data = rows || [];
+  if (!data.length) {
+    table.innerHTML = "<tbody><tr><td>거절된 주문이 없습니다.</td></tr></tbody>";
+    return;
+  }
+  table.innerHTML = "<thead><tr><th>종목</th><th>상태</th><th>사유</th><th>시간</th></tr></thead><tbody>" +
+    data.map((o) => "<tr><td>" + o.symbol + "</td><td>" + o.status + "</td><td>" + (o.reason || "-") + "</td><td>" + (o.created_at || "-") + "</td></tr>").join("") +
+    "</tbody>";
+}
+
+function renderReport(userSummary, raw) {
+  const summary = userSummary || {};
+  setText("report-state", summary["실행 상태"]);
+  setText("report-ticks", summary["Tick 수"]);
+  setText("report-candidates", summary["후보 수"]);
+  setText("report-orders", summary["생성된 주문 수"]);
+  setText("report-fills", summary["체결 수"]);
+  setText("report-rejected", summary["거절 수"]);
+  setText("report-errors", summary["오류 수"]);
+  const explanations = summary["한글 해석"] || [];
+  const suggestions = summary["다음 행동 제안"] || [];
+  setSummary("report-explanation", explanations.join(" "), suggestions.length ? "warn" : "");
+  document.getElementById("report-suggestions").textContent = suggestions.length ? suggestions.join(" ") : "추가 제안이 없습니다.";
+  setJson("report-content", raw || {});
+}
+
 async function fetchJson(url, init) {
   const response = await fetch(url, init);
   let body = null;
@@ -128,35 +337,124 @@ async function fetchJson(url, init) {
 async function refreshAll() {
   try {
     const paper = await fetchJson(ENDPOINTS.paperStatus);
-    setText("ps-mode", paper.mode);
-    setText("ps-live-enabled", paper.live_enabled);
-    setText("ps-market", paper.market_orders_allowed);
-    setText("ps-kis-dry-run", paper.kis_order_dry_run);
-    setText("ps-secret-exposed", paper.secret_exposed);
+    setText("ps-mode", paper.mode === "paper" ? "모의거래" : paper.mode);
+    setText("ps-live-enabled", boolKo(paper.live_enabled, "켜짐", "꺼짐"));
+    setText("ps-real-order", "불가능");
+    setText("ps-market", boolKo(paper.market_orders_allowed, "허용", "비허용"));
+    setText("ps-secret-exposed", boolKo(paper.secret_exposed, "노출", "노출 없음"));
     setText("kis-config-loaded", paper.kis_config_loaded);
     setText("kis-authenticated", paper.kis_authenticated);
     setText("kis-account-loaded", paper.kis_account_loaded);
     setText("kis-market-data", paper.kis_market_data_available);
     setText("kis-order-entry-ready", paper.kis_order_entry_ready);
     setText("kis-last-error", paper.kis_last_error);
+    setText("paper-last-error", paper.last_error || paper.kis_last_error);
   } catch (e) {
     logMsg("paper/status error: " + e.message);
   }
   try {
+    const account = await fetchJson(ENDPOINTS.paperAccount);
+    setText("acct-cash", JSON.stringify(account.cash || {}));
+    setText("acct-realized", JSON.stringify(account.realized_pnl || {}));
+  } catch (e) { logMsg("paper/account error: " + e.message); }
+  try {
+    const positions = await fetchJson(ENDPOINTS.paperPositions);
+    setText("acct-unrealized", positions.unrealized_pnl);
+    renderPositions(positions.positions || []);
+  } catch (e) { logMsg("paper/positions error: " + e.message); }
+  try {
+    const orders = await fetchJson(ENDPOINTS.paperOrders);
+    renderOpenOrders(orders.open_orders || []);
+  } catch (e) { logMsg("paper/orders error: " + e.message); }
+  try {
+    const fills = await fetchJson(ENDPOINTS.paperFills);
+    renderFills(fills.fills || []);
+  } catch (e) { logMsg("paper/fills error: " + e.message); }
+  try {
     const dryRun = await fetchJson(ENDPOINTS.dryRunStatus);
     const counters = dryRun.counters || {};
-    setText("dr-running", dryRun.running);
-    setText("dr-started-at", dryRun.started_at);
-    setText("dr-last-tick-at", dryRun.last_tick_at);
-    setText("dr-ticks-total", counters.ticks_total);
-    setText("dr-candidates-seen", counters.candidates_seen);
-    setText("dr-candidates-blocked", counters.candidates_blocked);
-    setText("dr-orders-created", counters.dry_run_orders_created);
+    setText("dr-running", boolKo(dryRun.running, "실행 중", "정지"));
+    setText("dr-ticks-total", counters["ticks" + "_total"]);
+    setText("dr-candidates-seen", counters["candidates" + "_seen"]);
+    setText("dr-orders-created", counters["dry_run_orders" + "_created"]);
     setText("dr-errors-total", counters.errors_total);
     setText("dr-last-error", counters.last_error);
   } catch (e) {
     logMsg("dry-run/status error: " + e.message);
   }
+  try {
+    const report = await fetchJson(ENDPOINTS.paperReportSummary);
+    renderReport(report.user_summary || {}, report.summary || {});
+  } catch (e) { logMsg("paper/report/summary error: " + e.message); }
+  try {
+    const engineStatus = await fetchJson(ENDPOINTS.paperEngineStatus);
+    const account = engineStatus.account || {};
+    const portfolio = engineStatus.portfolio || {};
+    const journal = engineStatus.journal || {};
+    const engine = engineStatus.engine || {};
+    renderCurrencyMap("acct-starting-cash", account.starting_cash || {});
+    renderCurrencyMap("acct-cash-by-currency", account.cash || {});
+    renderCurrencyMap("acct-realized-by-currency", account.realized_pnl_by_currency || {});
+    renderCurrencyMap("acct-unrealized-by-currency", portfolio.unrealized_pnl_by_currency || {});
+    setText("positions-count", "보유 종목 수: " + (portfolio.positions_count || 0));
+    renderRejectedOrders(journal.recent_orders || []);
+    setText("eng-engine-enabled", engine.paper_engine_enabled);
+    setText("eng-journal-enabled", engine.paper_journal_enabled);
+    setText("eng-journal-log", engine.paper_journal_log_dir_masked || "disabled");
+    setText("eng-last-fill", engine.last_fill_at || "-");
+    setText("eng-last-trade", engine.last_trade_at || "-");
+  } catch (e) { logMsg("paper/engine/status error: " + e.message); }
+}
+
+function formValue(id) {
+  return document.getElementById(id).value.trim();
+}
+
+async function submitPaperOrder() {
+  const stopPrice = formValue("order-stop-price");
+  const payload = {
+    symbol: formValue("order-symbol"),
+    side: formValue("order-side"),
+    quantity: Number(formValue("order-quantity")),
+    order_type: formValue("order-type"),
+    limit_price: formValue("order-limit-price"),
+    stop_price: stopPrice ? stopPrice : null,
+    mock_bid: formValue("mock-bid"),
+    mock_ask: formValue("mock-ask"),
+    mock_last: formValue("mock-last"),
+    mock_volume: Number(formValue("mock-volume")),
+    currency: formValue("order-currency")
+  };
+  try {
+    const result = await fetchJson(ENDPOINTS.paperOrderSimulate, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    setJson("paper-order-result", result);
+    setSummary("paper-order-summary", result.summary_ko, result.filled ? "" : (result.accepted ? "warn" : "error"));
+    setText("order-status-ko", result.filled ? "체결" : (result.accepted ? "접수됨" : "거절"));
+    setText("order-riskcheck-ko", result["risk_result"] ? result["risk_result"].summary_ko : "-");
+    setText("order-reject-ko", result.rejection_reason || "없음");
+    logMsg(result.summary_ko || ("paper order " + result.reason));
+  } catch (e) {
+    logMsg("paper order error: " + e.message);
+  }
+  refreshAll();
+}
+
+function fillDemoOrder() {
+  document.getElementById("order-symbol").value = "TEST";
+  document.getElementById("order-side").value = "buy";
+  document.getElementById("order-quantity").value = "10";
+  document.getElementById("order-type").value = "limit";
+  document.getElementById("order-limit-price").value = "100";
+  document.getElementById("order-stop-price").value = "";
+  document.getElementById("mock-bid").value = "99";
+  document.getElementById("mock-ask").value = "100";
+  document.getElementById("mock-last").value = "100";
+  document.getElementById("mock-volume").value = "100000";
+  document.getElementById("order-currency").value = "USD";
 }
 
 async function startDryRun() {
@@ -187,7 +485,7 @@ async function analyze() {
   try {
     const result = await fetchJson(ENDPOINTS.reportsAnalyze, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
     document.getElementById("report-meta").textContent = "run_dir: " + (result.run_dir || "-");
-    document.getElementById("report-content").textContent = JSON.stringify(result.summary || {}, null, 2);
+    renderReport(result.user_summary || {}, result.summary || {});
     logMsg("analyze ok");
   } catch (e) { logMsg("analyze error: " + e.message); }
 }
@@ -196,12 +494,21 @@ async function showLatest() {
   try {
     const result = await fetchJson(ENDPOINTS.reportsLatest);
     document.getElementById("report-meta").textContent = "run_dir: " + (result.run_dir || "-");
-    document.getElementById("report-content").textContent = JSON.stringify(result.summary || {}, null, 2);
+    renderReport(result.user_summary || {}, result.summary || {});
     logMsg("latest ok");
   } catch (e) { logMsg("latest error: " + e.message); }
 }
 
 document.getElementById("btn-refresh").addEventListener("click", refreshAll);
+document.getElementById("paper-order-form").addEventListener("submit", function (event) {
+  event.preventDefault();
+  submitPaperOrder();
+});
+document.getElementById("btn-submit-paper-order").addEventListener("click", submitPaperOrder);
+document.getElementById("btn-demo-order").addEventListener("click", function () {
+  fillDemoOrder();
+  submitPaperOrder();
+});
 document.getElementById("btn-start-dry-run").addEventListener("click", startDryRun);
 document.getElementById("btn-tick").addEventListener("click", tickOnce);
 document.getElementById("btn-stop-dry-run").addEventListener("click", stopDryRun);
