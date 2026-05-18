@@ -18,23 +18,39 @@ def test_dashboard_returns_html():
         response = client.get("/dashboard")
     assert response.status_code == 200
     assert "text/html" in response.headers["content-type"]
-    assert "Paper Trading Dashboard" in response.text
+    assert "모의거래 대시보드" in response.text
 
 
 def test_dashboard_safety_banner_present():
     text = _html()
-    for marker in ("paper / dry-run only", "live trading disabled", "market orders disabled", "no real orders"):
+    for marker in ("모의거래 전용", "실거래 꺼짐", "실제 주문 불가능", "실제 브로커 호출 없음"):
         assert marker in text
 
 
 def test_dashboard_has_required_sections_and_buttons():
     text = _html()
     for marker in (
-        "Paper trading 상태",
+        "안전 상태",
+        "현재 모드",
+        "실거래 상태",
+        "실제 주문 가능 여부",
+        "수동 모의 주문",
+        "바로 모의테스트 해보기",
+        "예시 모의 주문 실행",
+        "계좌 / 손익",
+        "현재 현금",
+        "보유 종목",
+        "주문 내역",
+        "체결 내역",
+        "실현 손익",
+        "평가 손익",
         "KIS 상태",
         "Dry-run 상태",
-        "최신 리포트",
+        "최신 리포트 해석",
+        "한글 해석",
+        "다음 행동 제안",
         "상태 새로고침",
+        "모의 주문 실행",
         "Dry-run 시작",
         "Tick 1회 실행",
         "Dry-run 중지",
@@ -55,6 +71,9 @@ def test_dashboard_has_no_forbidden_strings():
         "Allow market orders",
         "Submit real order",
         "Place real order",
+        "ticks_total",
+        "candidates_seen",
+        "dry_run_orders_created",
     )
     for marker in forbidden:
         assert marker not in text
@@ -64,6 +83,12 @@ def test_dashboard_endpoint_urls_are_whitelisted():
     text = _html()
     expected = {
         "/paper/status",
+        "/paper/account",
+        "/paper/positions",
+        "/paper/fills",
+        "/paper/orders",
+        "/paper/order/simulate",
+        "/paper/report/summary",
         "/paper/dry-run/status",
         "/paper/dry-run/start",
         "/paper/dry-run/stop",
@@ -75,8 +100,10 @@ def test_dashboard_endpoint_urls_are_whitelisted():
     assert found == expected
 
 
-def test_dashboard_does_not_include_form_action():
-    assert "<form" not in _html().lower()
+def test_dashboard_manual_order_form_has_no_action():
+    text = _html().lower()
+    assert '<form id="paper-order-form"' in text
+    assert "action=" not in text
 
 
 def test_dashboard_has_no_paper_run_endpoint():

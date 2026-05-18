@@ -41,6 +41,33 @@ python -m pytest -p no:cacheprovider
 curl http://127.0.0.1:8000/paper/status
 ```
 
+Open the browser dashboard:
+
+```bash
+./scripts/start_server.sh
+# then open http://127.0.0.1:8000/dashboard
+```
+
+Manual paper order simulation is available from `/dashboard` and never calls a
+real broker. The same flow is available by API:
+
+```bash
+curl http://127.0.0.1:8000/paper/account
+curl http://127.0.0.1:8000/paper/positions
+curl http://127.0.0.1:8000/paper/fills
+curl http://127.0.0.1:8000/paper/orders
+curl -X POST http://127.0.0.1:8000/paper/order/simulate \
+  -H 'Content-Type: application/json' \
+  -d '{"symbol":"AAPL","side":"buy","quantity":1,"order_type":"limit","limit_price":"100","mock_bid":"99","mock_ask":"100","mock_last":"100","mock_volume":100,"currency":"USD"}'
+```
+
+Dashboard quick demo:
+
+- Open `/dashboard`.
+- Click `예시 모의 주문 실행`.
+- The dashboard should show `모의 주문이 체결되었습니다`, lower cash, a larger TEST position, and a new fill row.
+- Raw JSON is available only under `원본 JSON 보기`; the main view uses Korean labels and explanations.
+
 ```bash
 curl -X POST http://127.0.0.1:8000/paper/run \
   -H 'Content-Type: application/json' \
