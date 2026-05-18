@@ -1,0 +1,156 @@
+from fastapi.testclient import TestClient
+
+from app.api.server import create_app
+
+
+KIS_ENV_KEYS = (
+    "TRADING_MODE",
+    "LIVE_TRADING_ENABLED",
+    "ALLOW_MARKET_ORDERS",
+    "KIS_ENV",
+    "KIS_ACCOUNT_NO",
+    "KIS_APP_KEY",
+    "KIS_APP_SECRET",
+    "KILL_SWITCH_ENGAGED",
+)
+
+
+def _clear_kis_env(monkeypatch):
+    for key in KIS_ENV_KEYS:
+        monkeypatch.delenv(key, raising=False)
+
+
+def test_healthz():
+    with TestClient(create_app()) as client:
+        response = client.get("/healthz")
+    assert response.status_code == 200
+    assert response.json() == {"ok": True}
+
+
+def test_paper_status_safety_flags():
+    with TestClient(create_app()) as client:
+        response = client.get("/paper/status")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["live_enabled"] is False
+    assert "premarket_gap_volume_breakout" in body["strategies"]
+    assert body["safety"]["strategy_emits_non_executable_only"] is True
+
+
+def test_paper_status_kis_metadata_fields(monkeypatch, tmp_path):
+    _clear_kis_env(monkeypatch)
+    monkeypatch.setattr("app.config._project_dir", lambda: tmp_path)
+    (tmp_path / ".env").write_text("", encoding="utf-8")
+    with TestClient(create_app()) as client:
+        response = client.get("/paper/status")
+    assert response.status_code == 200
+    body = response.json()
+    # mvp-006-1 fields
+    assert body["broker_type"] == "PaperBroker"
+    assert body["broker_environment"] == "paper"
+    assert body["live_trading_enabled"] is False
+    assert body["market_orders_allowed"] is False
+    assert isinstance(body["kis_config_loaded"], bool)
+    assert body["kis_authenticated"] is False
+    assert body["kis_token_expires_at_masked_or_relative"] is None
+    assert body["kis_account_loaded"] is False
+    assert body["kis_positions_loaded"] is False
+    assert body["kis_cash_balance_loaded"] is False
+    assert body["kis_market_data_available"] is False
+    assert body["last_broker_error"] is None
+    assert body["kis_last_error"] is None
+    assert body["account_no_masked"] == "<unset>"
+    assert body["secret_exposed"] is False
+    assert "kis_" + "secret_exposed" not in body
+    assert isinstance(body["configured_brokers"], list)
+    assert body["kis_order_entry_ready"] is False
+    assert body["kis_order_entry_mode"] == "disabled"
+    assert body["kis_order_methods_fail_closed"] is True
+    assert body["kill_switch_engaged"] is False
+    assert body["kis_order_dry_run"] is True
+    assert body["dry_run_running"] is False
+    assert body["kis_order_submission_available"] is False
+    assert body["kis_cancel_available"] is False
+    assert body["kis_replace_available"] is False
+    assert body["kis_open_orders_available"] is False
+    assert body["kis_fills_available"] is False
+    # Credentials must never appear in the response body.
+    body_text = response.text
+    for needle in ("KIS_APP_KEY", "KIS_APP_SECRET", "KIS_ACCOUNT_NO"):
+        assert needle not in body_text
+
+
+def test_paper_status_with_kis_config_masks_account(monkeypatch):
+    monkeypatch.setenv("TRADING_MODE", "paper")
+    monkeypatch.setenv("LIVE_TRADING_ENABLED", "false")
+    monkeypatch.setenv("ALLOW_MARKET_ORDERS", "false")
+    monkeypatch.setenv("KIS_ENV", "paper")
+    monkeypatch.setenv("KIS_ACCOUNT_NO", "12345678")
+    monkeypatch.setenv("KIS_APP_KEY", "fake-key")
+    monkeypatch.setenv("KIS_APP_SECRET", "fake-secret")
+    monkeypatch.setenv("KILL_SWITCH_ENGAGED", "false")
+
+    with TestClient(create_app()) as client:
+        response = client.get("/paper/status")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["kis_config_loaded"] is True
+    assert body["configured_brokers"] == ["KisBroker"]
+    assert body["kis_authenticated"] is False
+    assert body["kis_token_expires_at_masked_or_relative"] is None
+    assert body["kis_account_loaded"] is False
+    assert body["kis_positions_loaded"] is False
+    assert body["kis_cash_balance_loaded"] is False
+    assert body["kis_market_data_available"] is False
+    assert body["last_broker_error"] is None
+    assert body["kis_last_error"] is None
+    assert body["account_no_masked"] == "***5678"
+    assert body["secret_exposed"] is False
+    assert body["kis_order_entry_ready"] is True
+    assert body["kis_order_entry_mode"] == "not_implemented"
+    assert body["kis_order_methods_fail_closed"] is True
+    assert body["kill_switch_engaged"] is False
+    assert body["kis_order_dry_run"] is True
+    assert body["dry_run_running"] is False
+    assert body["kis_order_submission_available"] is False
+    assert body["kis_cancel_available"] is False
+    assert body["kis_replace_available"] is False
+    assert body["kis_open_orders_available"] is False
+    assert body["kis_fills_available"] is False
+
+    body_text = response.text
+    for needle in ("12345678", "fake-key", "fake-secret", "KIS_APP_KEY", "KIS_APP_SECRET"):
+        assert needle not in body_text
+
+
+def test_paper_status_kis_config_loaded_when_env_present(monkeypatch, tmp_path):
+    _clear_kis_env(monkeypatch)
+    monkeypatch.setattr("app.config._project_dir", lambda: tmp_path)
+    (tmp_path / ".env").write_text(
+        "\n".join(
+            (
+                "TRADING_MODE=paper",
+                "LIVE_TRADING_ENABLED=false",
+                "ALLOW_MARKET_ORDERS=false",
+                "KIS_ENV=paper",
+                "KIS_ACCOUNT_NO=87654321",
+                "KIS_APP_KEY=fake-status-app-key",
+                "KIS_APP_SECRET=fake-status-app-secret",
+            )
+        ),
+        encoding="utf-8",
+    )
+
+    with TestClient(create_app()) as client:
+        response = client.get("/paper/status")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["kis_config_loaded"] is True
+    assert body["account_no_masked"].startswith("***")
+    assert body["secret_exposed"] is False
+
+    body_text = response.text
+    for needle in ("87654321", "fake-status-app-key", "fake-status-app-secret"):
+        assert needle not in body_text

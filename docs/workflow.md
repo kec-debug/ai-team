@@ -1,5 +1,8 @@
 # 워크플로 (Workflow)
 
+> DEPRECATED: This workflow has been replaced by the Claude + Codex workflow.
+> 새 작업은 [docs/ai/CLAUDE_CODEX_WORKFLOW.md](ai/CLAUDE_CODEX_WORKFLOW.md)를 사용하세요.
+
 한 작업이 한국어 요청에서 시작해 GitHub 머지까지 어떻게 흐르는지 설명합니다.
 
 ## 7 단계 파이프라인

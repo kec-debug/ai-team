@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>AI 개발팀 컨트롤 센터</title>
+    <link rel="stylesheet" href="/style.css">
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Claude + Codex Workflow</p>
+        <h1>AI 개발팀 컨트롤 센터</h1>
+      </div>
+      <button id="refreshStatus" type="button">상태 확인</button>
+    </header>
+
+    <main class="layout">
+      <section class="panel quick-actions">
+        <h2>핵심 실행</h2>
+        <label>
+          작업 ID
+          <input id="jobId" type="text" value="mvp-001" autocomplete="off" spellcheck="false">
+        </label>
+        <label>
+          한국어 작업 요청
+          <textarea id="inputKo" spellcheck="false" rows="6"></textarea>
+        </label>
+        <p class="field-hint">여기에는 한국어 작업 요청만 입력하세요. 쉘 설정 명령, 실행 명령, 토큰, 비밀값은 넣지 않습니다.</p>
+        <div class="pipeline-runner">
+          <button id="runPipeline" class="primary-action" type="button">Claude → Codex → Claude 전체 실행</button>
+          <div class="primary-actions">
+            <button data-send="claude-plan" type="button">Claude 계획 생성</button>
+            <button data-send="codex-implement" type="button">Codex 구현 실행</button>
+            <button data-send="claude-review" type="button">Claude 리뷰 실행</button>
+            <button data-send="codex-review-fix" type="button">Codex 리뷰 반영 실행</button>
+            <button data-send="claude-re-review" type="button">Claude 재리뷰 실행</button>
+            <button id="finalManualReview" type="button">최종 확인으로 이동</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel control-panel">
+        <h2>승인 / 서비스 제어</h2>
+        <p class="warning-text">승인은 Claude 또는 Codex AI CLI 창에만 키 입력을 보내는 기능입니다. Manual Shell(git-shell)은 사람이 직접 git/test 명령을 실행하는 비AI 창입니다.</p>
+        <label>
+          제어할 tmux 창
+          <select id="tmuxWindow"></select>
+        </label>
+        <div class="actions control-actions">
+          <button id="approveOnce" type="button">승인 / 계속 진행</button>
+          <button id="approveSession" type="button">세션 승인</button>
+          <button id="rejectAction" type="button">거절</button>
+          <button id="interruptAction" type="button">중단</button>
+          <button id="restartAiTeam" type="button">AI팀 재시작</button>
+          <button id="restartGui" type="button">GUI 서버 재시작</button>
+        </div>
+      </section>
+
+      <section class="panel tmux-panel">
+        <div class="panel-head">
+          <h2>실시간 tmux 출력</h2>
+          <button id="refreshTmuxOutput" type="button">출력 새로고침</button>
+        </div>
+        <pre id="tmuxOutput" aria-live="polite"></pre>
+      </section>
+
+      <section class="panel pipeline-status">
+        <div class="panel-head">
+          <h2>파이프라인 상태</h2>
+          <div class="panel-actions">
+            <button id="pipelineStatus" type="button">상태 새로고침</button>
+            <button id="resetPipeline" type="button">파이프라인 상태 초기화</button>
+          </div>
+        </div>
+        <div id="pipelineState" class="status-line">아직 실행되지 않았습니다.</div>
+        <dl class="pipeline-meta">
+          <div>
+            <dt>작업 ID</dt>
+            <dd id="pipelineJobId">-</dd>
+          </div>
+          <div>
+            <dt>현재 단계</dt>
+            <dd id="pipelineStage">-</dd>
+          </div>
+          <div>
+            <dt>상태</dt>
+            <dd id="pipelineStateName">idle</dd>
+          </div>
+          <div>
+            <dt>마지막 업데이트</dt>
+            <dd id="pipelineUpdatedAt">-</dd>
+          </div>
+          <div>
+            <dt>tmux 대상 창</dt>
+            <dd id="pipelineTargetWindow">-</dd>
+          </div>
+          <div>
+            <dt>승인 대기 추정</dt>
+            <dd id="pipelineWaitingApproval">-</dd>
+          </div>
+        </dl>
+        <div id="detectedIssueAlert" class="issue-alert" hidden></div>
+        <div id="pipelineGuidance" class="pipeline-guidance" hidden></div>
+        <div id="approvalInlinePrompt" class="approval-inline" hidden>
+          <span>승인 대기 중 — 팝업에서 처리하세요.</span>
+          <button id="reopenApprovalPopup" type="button">승인 팝업 열기</button>
+        </div>
+        <div id="pipelineSteps" class="pipeline-steps"></div>
+      </section>
+
+      <details class="panel job-settings">
+        <summary>작업 설정</summary>
+        <label>
+          프로젝트 경로
+          <input id="projectDir" type="text" autocomplete="off" spellcheck="false">
+        </label>
+        <div class="role-display" aria-label="역할 안내">
+          <div>
+            <strong>Claude</strong>
+            <span>planning / requirements / review</span>
+          </div>
+          <div>
+            <strong>Codex</strong>
+            <span>implementation / tests / patch summary</span>
+          </div>
+        </div>
+        <p class="role-aside">Manual Shell(git-shell)은 비AI 보조 창입니다. 사람이 직접 git status / git diff / 테스트 / commit / PR 명령을 실행합니다.</p>
+      </details>
+
+      <details class="panel advanced-panel">
+        <summary>고급 제어</summary>
+        <div class="actions">
+          <button id="startTeam" type="button">AI 팀 시작</button>
+          <button id="createJob" type="button">작업 폴더 생성</button>
+          <button id="saveInput" type="button">request.ko.md 저장</button>
+          <button id="gitStatus" type="button">git status</button>
+          <button id="gitDiff" type="button">git diff</button>
+        </div>
+      </details>
+
+      <section class="panel artifacts">
+        <div class="panel-head">
+          <h2>산출물</h2>
+          <button id="loadArtifacts" type="button">목록 새로고침</button>
+        </div>
+        <div id="artifactList" class="artifact-list"></div>
+      </section>
+
+      <section class="panel result-summary">
+        <h2>최종 결과</h2>
+        <dl class="summary-grid">
+          <div>
+            <dt>생성된 산출물</dt>
+            <dd id="summaryArtifacts">-</dd>
+          </div>
+          <div>
+            <dt>Git diff</dt>
+            <dd id="summaryDiff">-</dd>
+          </div>
+          <div>
+            <dt>Review 상태</dt>
+            <dd id="summaryReview">-</dd>
+          </div>
+          <div>
+            <dt>다음 권장 작업</dt>
+            <dd id="summaryNextAction">-</dd>
+          </div>
+        </dl>
+      </section>
+
+      <section class="panel output-panel">
+        <div class="panel-head">
+          <h2>출력</h2>
+          <button id="clearOutput" type="button">비우기</button>
+        </div>
+        <pre id="output" aria-live="polite"></pre>
+      </section>
+    </main>
+
+    <div id="approvalModal" class="modal-backdrop" hidden role="dialog" aria-modal="true" aria-labelledby="approvalModalTitle">
+      <div class="approval-modal">
+        <div class="modal-head">
+          <h2 id="approvalModalTitle">AI CLI 승인 요청 감지</h2>
+          <button id="closeApprovalModal" class="modal-close" type="button" aria-label="닫기">닫기</button>
+        </div>
+        <p class="modal-body-text">Claude 또는 Codex가 명령 실행 승인을 기다리고 있습니다.<br>아래 버튼으로 진행 여부를 선택하세요.</p>
+        <dl class="approval-details">
+          <div>
+            <dt>현재 단계</dt>
+            <dd id="approvalModalStep">-</dd>
+          </div>
+          <div>
+            <dt>대상 창</dt>
+            <dd id="approvalModalWindow">-</dd>
+          </div>
+          <div>
+            <dt>감지 요약</dt>
+            <dd id="approvalModalSummary">-</dd>
+          </div>
+          <div>
+            <dt>요청 유형</dt>
+            <dd id="approvalModalType">-</dd>
+          </div>
+          <div>
+            <dt>명령/대상</dt>
+            <dd id="approvalModalCommand">-</dd>
+          </div>
+          <div>
+            <dt>작업 디렉터리</dt>
+            <dd id="approvalModalCwd">-</dd>
+          </div>
+          <div>
+            <dt>위험도</dt>
+            <dd id="approvalModalRisk">-</dd>
+          </div>
+          <div>
+            <dt>추천 행동</dt>
+            <dd id="approvalModalRecommendation">-</dd>
+          </div>
+        </dl>
+        <details class="approval-raw">
+          <summary>원문 보기</summary>
+          <pre id="approvalModalRaw">-</pre>
+        </details>
+        <p class="modal-warning">주의: 이 버튼은 현재 AI CLI 창에 키 입력을 보내는 기능입니다. 위험한 명령은 승인하지 마세요.</p>
+        <p id="approvalModalRiskWarning" class="modal-warning">-</p>
+        <div class="modal-actions">
+          <button id="approvalModalApproveOnce" data-approval-action="/api/tmux/approve-once" type="button">1회 승인</button>
+          <button id="approvalModalApproveSession" data-approval-action="/api/tmux/approve-session" type="button">세션 승인</button>
+          <button data-approval-action="/api/tmux/reject" class="danger-action" type="button">거절</button>
+          <button data-approval-action="/api/tmux/interrupt" class="danger-action" type="button">중단</button>
+          <button id="dismissApprovalModal" type="button">닫기</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="/app.js"></script>
+  </body>
+</html>
