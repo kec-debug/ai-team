@@ -198,7 +198,7 @@ def test_kis_healthcheck_returns_disconnected_dict(settings):
     assert h["capabilities"]["fills"] is False
     assert h["market_data"]["connected"] is False
     reason = h["market_data"]["reason"].lower()
-    assert "skeleton" in reason or "not implemented" in reason
+    assert "mock_mode_no_network" in reason or "authentication_required" in reason
 
 
 def test_kis_broker_repr_masks_secrets(settings):

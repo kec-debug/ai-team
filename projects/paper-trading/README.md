@@ -21,6 +21,8 @@ Supported simulated order types are `LIMIT`, `STOP_LIMIT`, and guarded paper-onl
 
 `PaperAccount` stores cash by currency, and `PortfolioService` reports both legacy aggregate Decimal fields and per-currency realized PnL, market value, and unrealized PnL dictionaries. No exchange-rate conversion is performed.
 
+`PaperEngine.submit_intents(intents)` accepts `OrderIntent` values only, sends them through `RiskEngine -> OMS -> PaperBroker.submit`, and returns an accepted/rejected batch result. Calling `engine.on_quote(quote)` afterwards uses the same broker/account/portfolio/journal state for fills, cash, positions, and journal entries.
+
 ## Run
 
 ```bash
@@ -363,9 +365,11 @@ export KIS_ORDER_DRY_RUN=true
 - `__post_init__`이 모든 invariant를 검증합니다(uppercase symbol, 양수 가격, `ask >= bid`, timezone-aware timestamp).
 - `source` 필드로 출처를 추적합니다(예: `"kis_paper"`, `"alpaca_paper"`, `"synthetic"`).
 
-`app/broker/kis_quote_mapper.py`는 KIS raw 응답을 `Quote`로 변환하는 매퍼 skeleton입니다. KIS Open API 공식 문서값이 부재하므로 본 단계에서는 `NotImplementedError`로 fail-closed 상태를 유지합니다.
+`app/broker/kis_quote_mapper.py`는 공식값이 확인된 KIS 해외주식 현재가 응답(`rt_cd`, `output.last`, `output.tvol`)을 `Quote`로 변환합니다. KIS 응답에 bid/ask와 거래소 timestamp가 없으므로 `bid=ask=last`, `bid_ask_present=false`, 수신 시각을 quote timestamp로 둡니다.
 
-필요한 공식 문서값은 [`docs/kis/MISSING_MARKET_DATA_VALUES.md`](../../docs/kis/MISSING_MARKET_DATA_VALUES.md)에 catalog로 정리되어 있습니다. 사용자가 KIS 공식 개발자 포털에서 항목별 `<TBD>`를 채우고 확인 완료 상태로 표시한 뒤에만 별도 mvp에서 매퍼 본문과 `KisMarketDataClient.get_quote` HTTP 호출을 구현합니다.
+`KisMarketDataClient.get_quote(symbol, exchange="NAS")`는 기본 `KIS_API_MODE=mock`에서는 네트워크를 호출하지 않고 `mock_mode_no_network`로 fail-closed 합니다. `KIS_API_MODE=paper`와 인증 토큰이 있을 때만 KIS 모의투자 해외주식 현재가 path `/uapi/overseas-price/v1/quotations/price`, TR ID `HHDFS00000300`를 사용합니다. 주문 endpoint, 실전 host, 미확인 TR ID는 추가하지 않습니다.
+
+추가 시세 필드(bid/ask, 거래소 timestamp 등)나 다른 KIS 시세 기능은 공식 문서값이 확인된 뒤에만 구현합니다.
 
 ## API 인증 (api-auth-001)
 

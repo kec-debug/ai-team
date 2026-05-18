@@ -1,12 +1,18 @@
 from dataclasses import replace
+from datetime import datetime, timezone
 from decimal import Decimal
 
 import pytest
 
 from app.broker.paper import PaperBroker
+from app.domain.enums import Session
+from app.domain.quote import Quote
 from app.oms.manager import OMS
+from app.portfolio.account import PaperAccount
 from app.risk.engine import RiskEngine
 from app.runtime.dry_run import DryRunController
+from app.runtime.paper_engine import PaperEngine
+from app.runtime.paper_journal import PaperJournal
 from app.runtime.paper_runner import PaperRunner
 from app.strategy.premarket_gap import PremarketGapVolumeBreakoutStrategy
 
@@ -115,3 +121,43 @@ def test_absolute_report_path_is_rejected(settings, tmp_path):
     controller = _controller(settings, tmp_path, reports_dir=str(tmp_path / "reports"))
     with pytest.raises(RuntimeError, match="project-relative"):
         controller.start()
+
+
+def test_controller_routes_through_paper_engine_when_runner_wired_with_paper_engine(settings, tmp_path, make_snapshot):
+    broker = PaperBroker(max_fill_ratio_of_volume=Decimal("1"))
+    account = PaperAccount(cash={"USD": Decimal("100000")})
+    journal = PaperJournal()
+    oms = OMS(settings, RiskEngine(settings), broker)
+    engine = PaperEngine(settings, broker=broker, account=account, journal=journal, oms=oms)
+    runner = PaperRunner(
+        settings,
+        PremarketGapVolumeBreakoutStrategy(settings),
+        paper_engine=engine,
+    )
+    controller = _controller(settings, tmp_path, runner=runner)
+    controller.start()
+
+    result = controller.tick([make_snapshot()])
+    summary = controller.summary()
+
+    assert result.oms_acks == 1
+    assert summary["counters"]["dry_run_orders_created"] == 1
+    assert summary["counters"]["candidates_passed_risk"] == 1
+    assert len(broker.open_orders()) == 1
+
+    trades = engine.on_quote(
+        Quote(
+            "AAPL",
+            Decimal("106"),
+            Decimal("106"),
+            Decimal("106"),
+            100,
+            datetime.now(timezone.utc),
+            "test",
+            Session.REGULAR,
+            "USD",
+        )
+    )
+    assert len(trades) == 1
+    assert len(journal.trades) == 1
+    assert account.cash_balance("USD") < Decimal("100000")

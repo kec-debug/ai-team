@@ -2,9 +2,11 @@ import json
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from decimal import Decimal
+from enum import Enum
 from pathlib import Path
 from typing import Any
 
+from app.domain.enums import Side
 from app.domain.fills import Fill
 
 
@@ -23,6 +25,7 @@ class TradeLogEntry:
     broker_order_id: str
     oms_id: str
     symbol: str
+    side: Side
     quantity: int
     price: Decimal
     currency: str
@@ -35,6 +38,7 @@ class TradeLogEntry:
             broker_order_id=fill.broker_order_id,
             oms_id=fill.oms_id,
             symbol=fill.symbol,
+            side=fill.side,
             quantity=fill.quantity,
             price=fill.price,
             currency=fill.currency,
@@ -79,6 +83,8 @@ class PaperJournal:
 
 
 def _jsonable(value: Any) -> Any:
+    if isinstance(value, Enum):
+        return value.value
     if isinstance(value, Decimal):
         return str(value)
     if isinstance(value, datetime):

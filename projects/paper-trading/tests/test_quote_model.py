@@ -25,6 +25,12 @@ def test_quote_happy_path():
     q = _q()
     assert q.symbol == "AAPL"
     assert q.source == "synthetic"
+    assert q.bid_ask_present is True
+
+
+def test_quote_allows_synthetic_bid_ask_marker():
+    q = _q(last=Decimal("100"), bid=Decimal("100"), ask=Decimal("100"), bid_ask_present=False)
+    assert q.bid_ask_present is False
 
 
 def test_quote_rejects_lowercase_symbol():
@@ -89,3 +95,5 @@ def test_quote_frozen_dataclass_immutable():
     q = _q()
     with pytest.raises(FrozenInstanceError):
         q.last = Decimal("999")  # type: ignore[misc]
+    with pytest.raises(FrozenInstanceError):
+        q.bid_ask_present = False  # type: ignore[misc]

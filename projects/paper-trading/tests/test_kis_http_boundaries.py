@@ -161,7 +161,7 @@ def test_market_data_requires_auth_before_unimplemented_endpoint(settings):
         broker.get_quote("AAPL")
 
     broker.auth._store_token("fake-token", 120)
-    with pytest.raises(NotImplementedError, match="confirm market data endpoint"):
+    with pytest.raises(KisDataUnavailableError, match="mock_mode_no_network"):
         broker.get_quote("AAPL")
 
 
