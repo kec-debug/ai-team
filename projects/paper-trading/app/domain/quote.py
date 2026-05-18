@@ -1,4 +1,8 @@
-"""Quote domain model: broker-agnostic market data snapshot."""
+"""Quote domain model: broker-agnostic market data snapshot.
+
+``bid_ask_present`` marks whether bid/ask came from the source or were
+synthetically derived from ``last``.
+"""
 
 from __future__ import annotations
 
@@ -20,6 +24,7 @@ class Quote:
     source: str
     session: Session | None = None
     currency: str = "USD"
+    bid_ask_present: bool = True
 
     def __post_init__(self) -> None:
         if not self.symbol or self.symbol != self.symbol.upper():

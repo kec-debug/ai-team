@@ -6,12 +6,18 @@ not implemented until endpoints, TR IDs, payloads, and response shapes are
 confirmed from official KIS Open API documentation.
 """
 
+import json
+import socket
+import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
-from typing import Any
+from typing import Any, Protocol
+from urllib.error import HTTPError, URLError
+from urllib.parse import quote as urlquote, urlsplit
+from urllib.request import Request, urlopen
 
-from app.config import Settings
+from app.broker.kis_quote_mapper import kis_raw_quote_to_domain
 from app.broker.kis_http import (
     KisApiMode,
     KisAuthError,
@@ -25,8 +31,18 @@ from app.broker.kis_token_cache import (
     TokenCache,
     TokenRecord,
 )
+from app.config import Settings
 from app.domain.enums import OrderType, Side, TradingMode
 from app.domain.orders import BrokerOrder, OrderAck
+from app.domain.quote import Quote
+
+
+KIS_OVERSEAS_PRICE_PATH = "/uapi/overseas-price/v1/quotations/price"
+KIS_OVERSEAS_PRICE_TR_ID = "HHDFS00000300"
+KIS_PAPER_MARKET_DATA_HOSTS = frozenset({"openapivts.koreainvestment.com:29443"})
+KIS_ALLOWED_EXCHANGES = frozenset(
+    {"HKS", "NYS", "NAS", "AMS", "TSE", "SHS", "SZS", "SHI", "SZI", "HSX", "HNX", "BAY", "BAQ", "BAA"}
+)
 
 
 class KisError(Exception):
@@ -185,6 +201,108 @@ def _validate_paper_settings(settings: Settings) -> None:
         raise KisOrderRejectedError("live_trading_enabled")
     if settings.kis_env != "paper":
         raise KisOrderRejectedError("kis_env_not_paper")
+
+
+def _kis_extract_host(base_url: str) -> str:
+    parsed = urlsplit(base_url)
+    return parsed.netloc
+
+
+class KisMarketDataTransport(Protocol):
+    def get_quote(
+        self,
+        *,
+        base_url: str,
+        access_token: str,
+        app_key: str,
+        app_secret: str,
+        exchange: str,
+        symbol: str,
+    ) -> tuple[dict[str, Any], datetime]:
+        """Return a raw KIS quote response and response receipt timestamp."""
+
+
+@dataclass(frozen=True)
+class MockMarketDataTransport:
+    """Network-disabled transport used by default for mock KIS mode."""
+
+    def get_quote(
+        self,
+        *,
+        base_url: str,
+        access_token: str,
+        app_key: str,
+        app_secret: str,
+        exchange: str,
+        symbol: str,
+    ) -> tuple[dict[str, Any], datetime]:
+        raise KisDataUnavailableError("mock_mode_no_network")
+
+
+@dataclass(frozen=True)
+class UrllibMarketDataTransport:
+    """Conservative stdlib transport for confirmed KIS paper current-price calls."""
+
+    timeout_seconds: float = 5.0
+    max_retries: int = 1
+    backoff_seconds: float = 2.0
+
+    def get_quote(
+        self,
+        *,
+        base_url: str,
+        access_token: str,
+        app_key: str,
+        app_secret: str,
+        exchange: str,
+        symbol: str,
+    ) -> tuple[dict[str, Any], datetime]:
+        normalized_exchange = exchange.strip().upper()
+        normalized_symbol = symbol.strip().upper()
+        if normalized_exchange not in KIS_ALLOWED_EXCHANGES:
+            raise KisDataUnavailableError("invalid_exchange")
+        if _kis_extract_host(base_url) not in KIS_PAPER_MARKET_DATA_HOSTS:
+            raise KisDataUnavailableError("paper_market_data_host_required")
+
+        url = (
+            f"{base_url.rstrip()}{KIS_OVERSEAS_PRICE_PATH}"
+            f"?AUTH=&EXCD={urlquote(normalized_exchange)}&SYMB={urlquote(normalized_symbol)}"
+        )
+        headers = {
+            "content-type": "application/json; charset=utf-8",
+            "authorization": f"Bearer {access_token}",
+            "appkey": app_key,
+            "appsecret": app_secret,
+            "tr_id": KIS_OVERSEAS_PRICE_TR_ID,
+        }
+        request = Request(url=url, data=None, headers=headers, method="GET")
+        attempts = max(1, self.max_retries + 1)
+        for attempt in range(attempts):
+            try:
+                with urlopen(request, timeout=self.timeout_seconds) as response:
+                    received_at = datetime.now(timezone.utc)
+                    body = response.read().decode("utf-8")
+                parsed = json.loads(body)
+                if not isinstance(parsed, dict):
+                    raise KisDataUnavailableError("malformed_response")
+                rt_cd = parsed.get("rt_cd")
+                if rt_cd not in (None, "0"):
+                    code = parsed.get("msg_cd") or parsed.get("msg1") or "unknown"
+                    raise KisDataUnavailableError(f"kis_error:{code}")
+                return parsed, received_at
+            except HTTPError as exc:
+                if exc.code >= 500 and attempt < attempts - 1:
+                    time.sleep(self.backoff_seconds)
+                    continue
+                raise KisDataUnavailableError(f"http_{exc.code}") from exc
+            except (URLError, TimeoutError, socket.timeout) as exc:
+                if attempt < attempts - 1:
+                    time.sleep(self.backoff_seconds)
+                    continue
+                raise KisDataUnavailableError("transport_error") from exc
+            except json.JSONDecodeError as exc:
+                raise KisDataUnavailableError("malformed_response") from exc
+        raise KisDataUnavailableError("transport_error")
 
 
 def validate_kis_order_request(settings: Settings, broker_order: BrokerOrder) -> None:
@@ -455,39 +573,96 @@ class KisAccountClient:
 
 
 class KisMarketDataClient:
-    """KIS market data query skeleton."""
+    """KIS market data query client for confirmed paper current-price calls."""
 
-    def __init__(self, settings: Settings, auth: KisAuthClient) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        auth: KisAuthClient,
+        transport: KisMarketDataTransport | None = None,
+    ) -> None:
         self._settings = settings
         self._auth = auth
-        self._http = KisHttpClient(settings)
+        if transport is None:
+            mode = KisApiMode.parse(settings.kis_api_mode)
+            if mode is KisApiMode.MOCK:
+                transport = MockMarketDataTransport()
+            else:
+                transport = UrllibMarketDataTransport(
+                    timeout_seconds=settings.kis_oauth_timeout_seconds,
+                    max_retries=settings.kis_oauth_max_retries,
+                )
+        self._transport = transport
         self._last_error: str | None = None
 
     def __repr__(self) -> str:
-        return "KisMarketDataClient(<disconnected>)"
+        mode = "mock" if isinstance(self._transport, MockMarketDataTransport) else "paper"
+        return f"KisMarketDataClient(<{mode}>)"
 
-    def get_quote(self, symbol: str) -> dict[str, Any]:
-        self._validate_symbol(symbol)
+    def get_quote(self, symbol: str, *, exchange: str = "NAS") -> Quote:
+        normalized = self._validate_symbol(symbol)
         if not self._auth.is_authenticated():
             self._last_error = "authentication_required"
             raise KisAuthError("KIS authentication required")
-        self._last_error = "official_kis_quote_endpoint_required"
-        raise NotImplementedError(
-            "KIS get_quote(): TODO — confirm market data endpoint, TR ID, payload, and response shape "
-            "from KIS Open API official documentation. Do not invent endpoints."
-        )
+        token = self._auth.get_access_token()
+        if token is None:
+            self._last_error = "authentication_required"
+            raise KisAuthError("KIS authentication required")
+        try:
+            raw, received_at = self._transport.get_quote(
+                base_url=self._settings.kis_base_url_paper,
+                access_token=token,
+                app_key=self._settings.kis_app_key or "",
+                app_secret=self._settings.kis_app_secret or "",
+                exchange=exchange,
+                symbol=normalized,
+            )
+            quote = kis_raw_quote_to_domain(
+                raw,
+                symbol=normalized,
+                received_at=received_at,
+                source="kis_paper",
+                currency="USD",
+            )
+        except KisDataUnavailableError as exc:
+            self._last_error = str(exc)
+            raise
+        except ValueError as exc:
+            self._last_error = f"malformed_response:{exc}"
+            raise KisDataUnavailableError(self._last_error) from exc
+        self._last_error = None
+        return quote
 
-    def get_last_price(self, symbol: str) -> Any:
-        quote = self.get_quote(symbol)
-        return quote.get("last_price")
+    def get_last_price(self, symbol: str, *, exchange: str = "NAS") -> Decimal:
+        return self.get_quote(symbol, exchange=exchange).last
 
     def healthcheck_market_data(self) -> dict[str, Any]:
+        auth_present = self._auth.is_authenticated()
+        mock_mode = isinstance(self._transport, MockMarketDataTransport)
+        if mock_mode:
+            return {
+                "connected": False,
+                "available": False,
+                "reason": "mock_mode_no_network",
+                "auth_required": True,
+                "auth_present": auth_present,
+                "last_error": self._last_error,
+            }
+        if not auth_present:
+            return {
+                "connected": False,
+                "available": False,
+                "reason": "authentication_required",
+                "auth_required": True,
+                "auth_present": False,
+                "last_error": self._last_error,
+            }
         return {
-            "connected": False,
-            "available": False,
-            "reason": "skeleton — KIS Open API market data HTTP calls not implemented in this phase",
+            "connected": True,
+            "available": True,
+            "reason": None,
             "auth_required": True,
-            "auth_present": self._auth.is_authenticated(),
+            "auth_present": True,
             "last_error": self._last_error,
         }
 
@@ -568,7 +743,7 @@ class KisBroker:
         positions = self._account.get_positions()
         return {position.symbol: position.quantity for position in positions}
 
-    def get_quote(self, symbol: str) -> dict[str, Any]:
+    def get_quote(self, symbol: str) -> Quote:
         return self._market_data.get_quote(symbol)
 
     def get_open_orders(self) -> list[OrderAck]:
