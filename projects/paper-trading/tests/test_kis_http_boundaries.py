@@ -103,25 +103,19 @@ def test_account_parsers_return_internal_models_and_sanitize(settings):
     broker = KisBroker(_settings(settings))
     positions = broker.account.parse_positions_response(
         {
-            "account_no": "12345678",
-            "positions": [
+            "rt_cd": "0",
+            "output1": [
                 {
-                    "symbol": "AAPL",
-                    "quantity": "2",
-                    "avg_price": "100.50",
-                    "market_value": "201.00",
+                    "ovrs_pdno": "AAPL",
+                    "ovrs_cblc_qty": "2",
+                    "pchs_avg_pric": "100.50",
+                    "ovrs_stck_evlu_amt": "201.00",
+                    "tr_crcy_cd": "USD",
+                    "ovrs_excg_cd": "NASD",
+                    "appkey": "fake-key",
+                    "access_token": "Bearer XYZ",
                 }
             ],
-        }
-    )
-    cash = broker.account.parse_cash_balance_response(
-        {
-            "account_no": "12345678",
-            "cash": {
-                "currency": "USD",
-                "cash": "1000.25",
-                "withdrawable_cash": "900.25",
-            },
         }
     )
 
@@ -131,15 +125,18 @@ def test_account_parsers_return_internal_models_and_sanitize(settings):
             quantity=2,
             avg_price=Decimal("100.50"),
             market_value=Decimal("201.00"),
+            currency="USD",
+            exchange="NASD",
         )
     ]
-    assert cash == KisCashBalance(
-        currency="USD",
-        cash=Decimal("1000.25"),
-        withdrawable_cash=Decimal("900.25"),
-    )
     assert broker.account.positions_loaded() is True
-    assert broker.account.cash_balance_loaded() is True
+
+    with pytest.raises(
+        KisDataUnavailableError,
+        match="paper_cash_balance_not_available",
+    ):
+        broker.account.parse_cash_balance_response({"output3": {"foo": "bar"}})
+    assert broker.account.cash_balance_loaded() is False
 
 
 def test_market_data_symbol_validation_and_healthcheck(settings):
@@ -181,9 +178,9 @@ def test_order_dry_run_does_not_send_http_and_sanitizes_payload(settings):
 
 def test_order_live_http_fails_closed_without_official_endpoint(settings):
     broker = KisBroker(_settings(settings, kis_order_dry_run=False))
-    with pytest.raises(NotImplementedError, match="order endpoint"):
+    with pytest.raises(KisOrderRejectedError, match="authentication_required"):
         broker.place_order(_broker_order())
-    assert broker.last_error == "official_kis_order_endpoint_required"
+    assert broker.last_error == "authentication_required"
 
 
 def test_order_guards_still_reject_unsafe_settings(settings):

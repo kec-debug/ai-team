@@ -113,7 +113,7 @@ def test_kis_place_cancel_replace_not_implemented(settings):
         broker.place_order(_broker_order(quantity=0))
     assert broker.place_order(_broker_order()).status == "dry_run"
     broker_no_dry_run = KisBroker(replace(_configured(settings), kis_order_dry_run=False))
-    with pytest.raises(NotImplementedError, match="order endpoint"):
+    with pytest.raises(KisOrderRejectedError, match="authentication_required"):
         broker_no_dry_run.place_order(_broker_order())
     with pytest.raises(NotImplementedError):
         broker.cancel_order("x")

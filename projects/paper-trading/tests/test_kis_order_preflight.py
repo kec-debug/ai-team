@@ -140,7 +140,7 @@ def test_place_order_valid_input_reaches_notimplemented(settings):
     assert broker.last_order_preview is not None
 
 
-def test_place_order_valid_input_with_dry_run_disabled_reaches_notimplemented(settings):
+def test_place_order_valid_input_with_dry_run_disabled_requires_auth(settings):
     broker = KisBroker(replace(_settings(settings), kis_order_dry_run=False))
-    with pytest.raises(NotImplementedError, match="Pre-flight passed"):
+    with pytest.raises(KisOrderRejectedError, match="authentication_required"):
         broker.place_order(_broker_order())

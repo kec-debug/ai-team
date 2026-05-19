@@ -51,6 +51,19 @@ KIS_PAPER_ACCOUNT_HOSTS = frozenset({"openapivts.koreainvestment.com:29443"})
 KIS_PAPER_ACCOUNT_EXCHANGES = frozenset({"NASD", "NYSE", "AMEX"})
 KIS_PAPER_ACCOUNT_CURRENCIES = frozenset({"USD", "HKD", "CNY", "JPY", "VND"})
 KIS_BALANCE_MAX_PAGES = 10
+# docs/kis/MISSING_OFFICIAL_VALUES.md §4.2 / §4.4 / §4.5 / §4.9 (paper VTTT1002U / VTTT1001U only).
+KIS_OVERSEAS_ORDER_PATH = "/uapi/overseas-stock/v1/trading/order"
+KIS_PAPER_ORDER_TR_ID_US_BUY = "VTTT1002U"
+KIS_PAPER_ORDER_TR_ID_US_SELL = "VTTT1001U"
+KIS_PAPER_ORDER_TR_IDS = frozenset({
+    KIS_PAPER_ORDER_TR_ID_US_BUY,
+    KIS_PAPER_ORDER_TR_ID_US_SELL,
+})
+KIS_PAPER_ORDER_HOSTS = frozenset({"openapivts.koreainvestment.com:29443"})
+KIS_PAPER_ORDER_EXCHANGES = frozenset({"NASD", "NYSE", "AMEX"})
+KIS_PAPER_ORDER_LIMIT_DVSN = "00"
+KIS_PAPER_ORDER_ORD_SVR_DVSN_CD = "0"
+KIS_PAPER_ORDER_SELL_TYPE = "00"
 
 
 class KisError(Exception):
@@ -209,6 +222,36 @@ def _split_kis_account_no(account_no: str) -> tuple[str, str]:
     if len(digits) != 10 or not digits.isdigit():
         raise KisConfigError("invalid_kis_account_no_format")
     return digits[:8], digits[8:]
+
+
+def _select_paper_order_tr_id(side: Side) -> str:
+    if side is Side.BUY:
+        return KIS_PAPER_ORDER_TR_ID_US_BUY
+    if side is Side.SELL:
+        return KIS_PAPER_ORDER_TR_ID_US_SELL
+    raise KisOrderRejectedError("side_invalid")
+
+
+def _build_paper_order_body(
+    *,
+    cano: str,
+    acnt_prdt_cd: str,
+    exchange: str,
+    request: "KisOrderRequest",
+) -> dict[str, str]:
+    body: dict[str, str] = {
+        "CANO": cano,
+        "ACNT_PRDT_CD": acnt_prdt_cd,
+        "OVRS_EXCG_CD": exchange,
+        "PDNO": request.symbol,
+        "ORD_QTY": str(int(request.quantity)),
+        "OVRS_ORD_UNPR": format(request.limit_price, "f"),
+        "ORD_DVSN": KIS_PAPER_ORDER_LIMIT_DVSN,
+        "ORD_SVR_DVSN_CD": KIS_PAPER_ORDER_ORD_SVR_DVSN_CD,
+    }
+    if request.side is Side.SELL:
+        body["SLL_TYPE"] = KIS_PAPER_ORDER_SELL_TYPE
+    return body
 
 
 def _validate_paper_settings(settings: Settings) -> None:
@@ -436,6 +479,95 @@ class UrllibAccountTransport:
             except json.JSONDecodeError as exc:
                 raise KisDataUnavailableError("invalid_response_body") from exc
         raise KisDataUnavailableError("transport_error")
+
+
+class KisOrderTransport(Protocol):
+    def submit_order(
+        self,
+        *,
+        base_url: str,
+        access_token: str,
+        app_key: str,
+        app_secret: str,
+        tr_id: str,
+        body: dict[str, str],
+    ) -> dict[str, Any]:
+        """Submit a single KIS paper order and return the raw response dict."""
+
+
+@dataclass(frozen=True)
+class MockOrderTransport:
+    def submit_order(
+        self,
+        *,
+        base_url: str,
+        access_token: str,
+        app_key: str,
+        app_secret: str,
+        tr_id: str,
+        body: dict[str, str],
+    ) -> dict[str, Any]:
+        raise KisOrderRejectedError("mock_mode_no_network")
+
+
+@dataclass(frozen=True)
+class UrllibOrderTransport:
+    timeout_seconds: float = 5.0
+    max_retries: int = 1
+    backoff_seconds: float = 2.0
+
+    def submit_order(
+        self,
+        *,
+        base_url: str,
+        access_token: str,
+        app_key: str,
+        app_secret: str,
+        tr_id: str,
+        body: dict[str, str],
+    ) -> dict[str, Any]:
+        if _kis_extract_host(base_url) not in KIS_PAPER_ORDER_HOSTS:
+            raise KisOrderRejectedError("disallowed_host")
+        if tr_id not in KIS_PAPER_ORDER_TR_IDS:
+            raise KisOrderRejectedError("disallowed_tr_id")
+        exchange = body.get("OVRS_EXCG_CD", "")
+        if exchange not in KIS_PAPER_ORDER_EXCHANGES:
+            raise KisOrderRejectedError("invalid_exchange")
+        if body.get("ORD_DVSN") != KIS_PAPER_ORDER_LIMIT_DVSN:
+            raise KisOrderRejectedError("ord_dvsn_not_limit")
+
+        url = f"{base_url.rstrip('/')}{KIS_OVERSEAS_ORDER_PATH}"
+        headers = {
+            "content-type": "application/json; charset=utf-8",
+            "authorization": f"Bearer {access_token}",
+            "appkey": app_key,
+            "appsecret": app_secret,
+            "tr_id": tr_id,
+        }
+        data = json.dumps(body, separators=(",", ":")).encode("utf-8")
+        request = Request(url=url, data=data, headers=headers, method="POST")
+        attempts = max(1, self.max_retries + 1)
+        for attempt in range(attempts):
+            try:
+                with urlopen(request, timeout=self.timeout_seconds) as response:
+                    raw_body = response.read().decode("utf-8")
+                parsed = json.loads(raw_body)
+                if not isinstance(parsed, dict):
+                    raise KisOrderRejectedError("invalid_response_body")
+                return parsed
+            except HTTPError as exc:
+                if exc.code >= 500 and attempt < attempts - 1:
+                    time.sleep(self.backoff_seconds)
+                    continue
+                raise KisOrderRejectedError(f"http_{exc.code}") from exc
+            except (URLError, TimeoutError, socket.timeout) as exc:
+                if attempt < attempts - 1:
+                    time.sleep(self.backoff_seconds)
+                    continue
+                raise KisOrderRejectedError("transport_error") from exc
+            except json.JSONDecodeError as exc:
+                raise KisOrderRejectedError("invalid_response_body") from exc
+        raise KisOrderRejectedError("transport_error")
 
 
 def validate_kis_order_request(settings: Settings, broker_order: BrokerOrder) -> None:
@@ -961,6 +1093,15 @@ class KisBroker:
         self._market_data = KisMarketDataClient(settings, self._auth)
         self._last_error: str | None = None
         self._last_order_preview: KisDryRunPreview | None = None
+        mode = KisApiMode.parse(settings.kis_api_mode)
+        if mode is KisApiMode.MOCK:
+            self._order_transport: KisOrderTransport = MockOrderTransport()
+        else:
+            self._order_transport = UrllibOrderTransport(
+                timeout_seconds=settings.kis_oauth_timeout_seconds,
+                max_retries=settings.kis_oauth_max_retries,
+            )
+        self._last_order_response: KisOrderResponse | None = None
 
     def __repr__(self) -> str:
         return (
@@ -1009,6 +1150,7 @@ class KisBroker:
     def place_order(self, broker_order: BrokerOrder) -> OrderAck:
         validate_kis_order_request(self._settings, broker_order)
         request = self._to_kis_request(broker_order)
+
         if self._settings.kis_order_dry_run:
             self._last_order_preview = self._dry_run_preview(request)
             return OrderAck(
@@ -1017,11 +1159,78 @@ class KisBroker:
                 status="dry_run",
                 mode=self.mode,
             )
-        self._last_error = "official_kis_order_endpoint_required"
-        raise NotImplementedError(
-            "KIS place_order(): TODO — DO NOT WIRE without OMS-only execution + RiskEngine guard. "
-            "Pre-flight passed but order endpoint HTTP transmission is intentionally not implemented until KIS Open API "
-            "endpoints/TR IDs/payloads are confirmed from official documentation."
+
+        if not self._auth.is_authenticated():
+            self._last_error = "authentication_required"
+            raise KisOrderRejectedError("authentication_required")
+        access_token = self._auth.get_access_token()
+        if not access_token:
+            self._last_error = "authentication_required"
+            raise KisOrderRejectedError("authentication_required")
+
+        try:
+            cano, acnt_prdt_cd = _split_kis_account_no(self._settings.kis_account_no or "")
+        except KisConfigError as exc:
+            self._last_error = "invalid_kis_account_no_format"
+            raise KisOrderRejectedError("invalid_kis_account_no_format") from exc
+
+        tr_id = _select_paper_order_tr_id(broker_order.side)
+        exchange = "NASD"
+        body = _build_paper_order_body(
+            cano=cano,
+            acnt_prdt_cd=acnt_prdt_cd,
+            exchange=exchange,
+            request=request,
+        )
+
+        try:
+            raw = self._order_transport.submit_order(
+                base_url=self._settings.kis_base_url_paper,
+                access_token=access_token,
+                app_key=self._settings.kis_app_key or "",
+                app_secret=self._settings.kis_app_secret or "",
+                tr_id=tr_id,
+                body=body,
+            )
+        except KisOrderRejectedError as exc:
+            self._last_error = exc.reason
+            raise
+
+        sanitized = sanitize_kis_response(raw, self._settings)
+        if "rt_cd" not in sanitized:
+            self._last_error = "malformed_response"
+            raise KisOrderRejectedError("malformed_response")
+        rt_cd = sanitized.get("rt_cd")
+        if rt_cd != "0":
+            code = sanitized.get("msg_cd") or sanitized.get("msg1") or "unknown"
+            self._last_error = f"kis_error:{code}"
+            raise KisOrderRejectedError(f"kis_error:{code}")
+
+        output_raw = sanitized.get("output")
+        output = output_raw if isinstance(output_raw, dict) else {}
+        odno_value = output.get("ODNO")
+        odno = str(odno_value).strip() if odno_value is not None else ""
+        odno_or_none = odno or None
+
+        response_record = KisOrderResponse(
+            internal_order_id=broker_order.oms_id,
+            broker_order_id=odno_or_none,
+            broker="KisBroker",
+            status="submitted",
+            submitted_at=datetime.now(timezone.utc),
+            symbol=broker_order.symbol,
+            side=broker_order.side,
+            quantity=broker_order.quantity,
+            limit_price=broker_order.limit_price,
+            raw_response_sanitized=sanitized,
+        )
+        self._last_order_response = response_record
+        self._last_error = None
+        return OrderAck(
+            oms_id=broker_order.oms_id,
+            broker_order_id=odno_or_none,
+            status="submitted",
+            mode=self.mode,
         )
 
     def cancel_order(self, broker_order_id: str) -> None:
@@ -1063,6 +1272,10 @@ class KisBroker:
     @property
     def last_order_preview(self) -> KisDryRunPreview | None:
         return self._last_order_preview
+
+    @property
+    def last_order_response(self) -> KisOrderResponse | None:
+        return self._last_order_response
 
     def _idempotency_key_for(self, broker_order: BrokerOrder) -> str:
         return f"kis-paper-{broker_order.oms_id}"
