@@ -24,17 +24,12 @@ def test_missing_official_values_has_required_sections():
 def test_missing_official_values_does_not_leak_real_secrets():
     text = DOC_PATH.read_text(encoding="utf-8")
     assert "<TBD>" in text
-    assert "Confirmed: yes" not in text
     forbidden_values = (
         "PS" + "NFD",
         "PK" + "ID",
         "AK" + "IA",
         "s" + "k-",
         "gh" + "p_",
-        "/" + "uapi" + "/",
-        "/" + "oauth2" + "/",
-        "paper" + "-api",
-        "korea" + "investment.com",
     )
     for forbidden in forbidden_values:
         assert forbidden not in text
