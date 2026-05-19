@@ -1,30 +1,85 @@
-# KIS Open API - Missing Official Values
+# Codex 작업 지시문 — KIS_2
 
-본 문서는 KIS Open API 모의투자 HTTP 연결을 구현하기 위해 필요한 공식 문서값의 갭을 정리합니다. 본 저장소는 KIS endpoint, TR ID, header, payload를 추측하지 않습니다. 아래 항목이 KIS 공식 Open API 문서에서 확인된 뒤에만 별도 mvp에서 HTTP 연결을 진행합니다.
+## 0. 본 작업의 전제
 
-## 정책
+- 상위 plan: `projects/paper-trading/docs/ai/jobs/KIS_2/plan.md`.
+- 사용자 업로드: `uploads/6.xlsx` — 2026-05-19 사용자 확인 KIS 공식 자료. **Codex 는 이 xlsx 를 다시 파싱하지 말 것**. 필요한 모든 값은 본 codex-task 의 §A 본문에 byte-level 그대로 박혀 있다.
+- 코드 변경 0건. 본 작업은 **문서 1 개 (`docs/kis/MISSING_OFFICIAL_VALUES.md`) + patch.md 1 개**만 변경.
+- `pytest` 실행은 본 job 완료 조건이 아니지만 회귀 안전을 위해 `python -m compileall app tests` 는 실행한다.
 
-- 본 표의 모든 `<TBD>` 항목은 KIS 공식 Open API 개발자 포털 문서에서 직접 확인해 채워 넣어야 합니다.
-- 실전투자(live) endpoint는 본 저장소에 추가하지 않습니다. 모의투자(paper) endpoint만 다룹니다.
-- 실제 app key, app secret, 계좌번호, access token 값은 본 문서/저장소 어디에도 기록하지 않습니다.
-- 항목별로 `Confirmed: no`인 한 해당 HTTP 기능은 `NotImplementedError` 또는 dry-run 상태를 유지합니다.
+## 1. Hard rules (안전)
 
-## 1. OAuth 인증
+- KIS endpoint URL / TR ID / 헤더 / 응답 필드명 추측 금지. **본 codex-task 의 §A 본문을 byte-level 그대로** `docs/kis/MISSING_OFFICIAL_VALUES.md` §2 와 §4 에 적용. 다른 값 추가 금지.
+- 실 app key / app secret / 계좌번호 / access token / refresh token / Bearer 값 **기록 금지** (본문에 없으며, 어떤 자리에도 추가하지 말 것).
+- `app/` 하 코드, `app/broker/kis*.py`, `app/domain/`, `app/oms/`, `app/risk/`, `app/portfolio/`, `app/strategy/`, `app/session/`, `app/runtime/`, `app/api/`, `app/static/`, `app/main.py`, `app/config.py`, `tests/`, `.env`, `.env.example`, `.gitignore`, `pyproject.toml`, `pytest.ini`, `README.md` **변경 금지**.
+- `docs/kis/MISSING_MARKET_DATA_VALUES.md` **변경 금지**.
+- `docs/kis/MISSING_OFFICIAL_VALUES.md` 의 §1 / §3 / "정책" / "다음 작업 가이드" / "보안" 섹션 **변경 금지**. 본 작업은 §2 와 §4 두 섹션 본문만 교체.
+- 외부 HTTP 라이브러리 import 추가 금지. 실 KIS 호스트로 네트워크 호출 금지.
+- 실주문 / 시장가 주문 / RiskEngine 우회 / OMS 우회 / Strategy 의 broker 직접 호출 / Agent 의 executable order 생성 금지.
+- 자동 `git commit` / `push` / `merge` / 배포 금지.
 
-| 항목 | 설명 | 값 | Confirmed |
-| --- | --- | --- | --- |
-| Paper trading base URL | 모의투자 환경 base URL | `<TBD>` | no |
-| OAuth token endpoint | 토큰 발급 path | `<TBD>` | no |
-| OAuth token HTTP method | `POST`/`GET` 등 | `<TBD>` | no |
-| Token refresh endpoint (있으면) | 갱신 path | `<TBD>` | no |
-| Required request headers | `content-type` 등 | `<TBD>` | no |
-| Request body fields | `grant_type`, `appkey`, `appsecret`, ... | `<TBD>` | no |
-| Response token field name | `access_token`/`token` 등 | `<TBD>` | no |
-| Response token expiry field | `expires_in`/`expires_at` 등 | `<TBD>` | no |
-| Token type field (있으면) | `Bearer` 등 | `<TBD>` | no |
+## 2. 수정·생성 파일 화이트리스트
 
-충족 시 후속 mvp가 `KisAuthClient.authenticate()` / `refresh_token()`을 실제 HTTP로 연결합니다.
+수정 (MODIFY):
 
+- `docs/kis/MISSING_OFFICIAL_VALUES.md` — §2 와 §4 본문 교체.
+
+생성 (NEW):
+
+- `projects/paper-trading/docs/ai/jobs/KIS_2/patch.md` — §A.3 양식 그대로.
+
+위 두 파일 외 어떤 파일도 변경/생성하지 않는다.
+
+## 3. 단계별 작업
+
+### 3.1 §2 본문 교체
+
+`docs/kis/MISSING_OFFICIAL_VALUES.md` 안에서 `## 2. 해외주식/미국주식 계좌` 헤딩부터 그 섹션이 끝나는 `## 3. 해외주식/미국주식 시세` 헤딩 **직전**까지의 모든 줄을 §A.1 본문으로 정확히 교체한다. §A.1 의 첫 줄은 `## 2. 해외주식/미국주식 계좌` 헤딩 자체로 시작하고, 마지막 줄 뒤에 빈 줄 1 개를 둔다 (다음 헤딩 `## 3.` 앞 공백).
+
+### 3.2 §4 본문 교체
+
+같은 파일 안에서 `## 4. 모의투자 주문` 헤딩부터 그 섹션이 끝나는 `## 다음 작업 가이드` 헤딩 **직전**까지의 모든 줄을 §A.2 본문으로 정확히 교체한다. §A.2 의 첫 줄은 `## 4. 모의투자 주문` 헤딩 자체로 시작하고, 마지막 줄 뒤에 빈 줄 1 개를 둔다.
+
+### 3.3 patch.md 작성
+
+`projects/paper-trading/docs/ai/jobs/KIS_2/patch.md` 를 §A.3 의 양식 그대로 작성한다. Codex 가 실행한 검증 결과 (`compileall` 출력, 안전 grep 결과) 만 채워 넣는다.
+
+### 3.4 검증
+
+```bash
+cd /root/ai-dev-center/projects/ai-team/projects/paper-trading
+.venv/bin/python -m compileall app tests
+```
+
+OK 여야 한다 (코드 무변경 회귀).
+
+안전 grep (모두 0 줄이어야 함):
+
+```bash
+grep -n "Bearer eyJ\|appkey=\|appsecret=\|access_token=" /root/ai-dev-center/projects/ai-team/docs/kis/MISSING_OFFICIAL_VALUES.md
+grep -n "12345678\|fake-key\|fake-secret" /root/ai-dev-center/projects/ai-team/docs/kis/MISSING_OFFICIAL_VALUES.md
+grep -nE "import (requests|httpx|aiohttp|urllib3)" /root/ai-dev-center/projects/ai-team/docs/kis/MISSING_OFFICIAL_VALUES.md
+```
+
+diff 확인:
+
+```bash
+git diff -- /root/ai-dev-center/projects/ai-team/docs/kis/MISSING_OFFICIAL_VALUES.md
+```
+
+§2 와 §4 외 다른 섹션 (§1 OAuth / §3 시세 / 정책 / 다음 작업 가이드 / 보안) 의 변동 줄 0 이어야 한다.
+
+`pytest -p no:cacheprovider` 실행은 선택. 실행한다면 기존 통과 수와 동일해야 한다 (코드 무변경).
+
+---
+
+## §A. byte-level 본문 (전면 교체용)
+
+### §A.1 — `## 2. 해외주식/미국주식 계좌` 본문 (전면 교체)
+
+다음 본문을 `docs/kis/MISSING_OFFICIAL_VALUES.md` 의 §2 자리에 byte-level 그대로 적용한다. 본문 자체에 줄을 추가/수정/삭제 금지.
+
+```markdown
 ## 2. 해외주식/미국주식 계좌
 
 본 섹션은 KIS Developers 공식 자료 (2026-05-19 사용자 업로드 `uploads/6.xlsx`) 에서 직접 확인된 해외주식 계좌·잔고·증거금 endpoint catalog 입니다. `Confirmed: yes` 항목은 6.xlsx 에 명시된 값에 한정하며, 그 외는 `<TBD>` 와 `Confirmed: no` 로 유지합니다. 실 app key / app secret / 계좌번호 / access token 은 본 catalog 에 절대 기록하지 않습니다.
@@ -123,19 +178,15 @@
 - 모의투자 자체가 일부 종목에 한해서만 매매 가능하다는 KIS 공식 안내가 있음 (주문 sheet 개요 명시). 본 catalog 는 종목 단위 정확한 list 를 보유하지 않으며, 매매 종목 list 는 후속 별 job 에서 확인 필요. (`<TBD>`)
 - `app/portfolio/account.py` 의 currency-별 cash ledger 와 `PortfolioService` 의 통화별 PnL 분리는 본 catalog 와 정합. **FX 변환 함수 / 환율 상수 / base currency 통합 함수 도입 금지** 정책 유지.
 
-## 3. 해외주식/미국주식 시세
+```
 
-| 항목 | 설명 | 값 | Confirmed |
-| --- | --- | --- | --- |
-| 해외주식 현재가 endpoint | path | `<TBD>` | no |
-| 해외주식 현재가 TR ID | 모의투자용 TR ID(시세는 실전과 공유될 수 있음 - 공식 문서 확인 필요) | `<TBD>` | no |
-| Request fields | 종목코드, 거래소 코드 등 | `<TBD>` | no |
-| Response bid/ask/last 필드 | `<TBD>` | `<TBD>` | no |
-| Response quote timestamp 필드 | `<TBD>` | `<TBD>` | no |
-| Stale quote 판단 기준 | 초/밀리초 등 단위 | `<TBD>` | no |
+(위 본문에는 `output3` 의 상세 sub-field list 는 포함하지 않습니다. 모의 환경에서 본 저장소가 우선 매핑할 항목은 잔고 (`VTTS3012R`) 와 매수가능금액 (`VTTS3007R`) 이며, `output3` 의 sub-field 는 후속 job 에서 추가 catalog 화합니다. `<TBD>` 마커는 의도적입니다.)
 
-충족 시 후속 mvp가 `KisMarketDataClient.get_quote()` / `get_last_price()`를 실제 HTTP로 연결합니다.
+### §A.2 — `## 4. 모의투자 주문` 본문 (전면 교체)
 
+다음 본문을 `docs/kis/MISSING_OFFICIAL_VALUES.md` 의 §4 자리에 byte-level 그대로 적용한다. 본문 자체에 줄을 추가/수정/삭제 금지.
+
+```markdown
 ## 4. 모의투자 주문
 
 본 섹션은 KIS Developers 공식 자료 (2026-05-19 사용자 업로드 `uploads/6.xlsx`) 에서 직접 확인된 해외주식 주문·정정·취소·예약·체결 endpoint catalog 입니다. `Confirmed: yes` 항목은 6.xlsx 에 명시된 값에 한정합니다. **실주문 HTTP 구현은 본 catalog 가 충족된 뒤에도 별 job 에서 `KIS_ORDER_DRY_RUN=true` 기본값 + `validate_kis_order_request` pre-flight 를 유지한 채 단계적으로 연결합니다.**
@@ -257,14 +308,96 @@ GET `/uapi/overseas-stock/v1/trading/inquire-ccnl` 의 Request Query Parameter �
 - `app key`, `app secret`, `계좌번호`, `access_token`, `Bearer` 토큰 원문은 본 catalog 와 코드 / 응답 / 로그 어디에도 기록하지 않는다.
 - LLM / Agent 는 `OrderIntent` 같은 non-executable intent 까지만 만들 수 있다. executable `BrokerOrder` / `Order` 생성은 OMS 만 수행한다.
 
-## 다음 작업 가이드
+```
 
-1. 사용자가 KIS Open API 공식 개발자 포털 또는 신뢰 가능한 KIS 공식 문서에서 위 `<TBD>` 항목을 직접 확인합니다.
-2. 항목별로 `Confirmed` 값을 `yes`로 변경하고 값을 채워 넣습니다.
-3. `Confirmed` 값이 `yes`인 항목만 별도 mvp에서 `app/broker/kis.py`에 HTTP로 연결합니다.
-4. 본 저장소는 사용자가 확인하지 않은 값은 절대 사용하지 않습니다.
+### §A.3 — `patch.md` 양식
 
-## 보안
+`projects/paper-trading/docs/ai/jobs/KIS_2/patch.md` 를 다음 본문 그대로 작성한다. Codex 가 직접 확인한 검증 결과만 채워 넣는다.
 
-- 실제 app key, app secret, 계좌번호, access token, refresh token은 이 문서에 절대 기록하지 않습니다. 모두 `.env`(gitignored)에만 둡니다.
-- 본 문서가 커밋된 형태로 git에 들어가도 자격증명 누출이 없도록 합니다.
+```markdown
+# KIS_2 — Codex 구현 요약
+
+## 변경된 파일
+
+- `docs/kis/MISSING_OFFICIAL_VALUES.md` (§2 와 §4 본문 교체)
+- `projects/paper-trading/docs/ai/jobs/KIS_2/patch.md` (본 파일)
+
+Pre-existing unrelated dirty files were left untouched.
+
+## 채워진 값 — §2 해외주식 계좌
+
+Paper-지원 endpoint 4 종:
+
+- 해외주식 잔고 `VTTS3012R` (`/inquire-balance`)
+- 해외주식 매수가능금액 `VTTS3007R` (`/inquire-psamount`)
+- 해외주식 체결기준 현재잔고 `VTRP6504R` (`/inquire-present-balance`, 모의는 `output3` 만 사용 가능)
+
+Paper-미지원 endpoint 4 종 (실전 TR_ID 만 명시):
+
+- 해외주식 결제기준 잔고 `CTRP6010R`
+- 해외주식 일별거래내역 `CTOS4001R`
+- 해외주식 기간손익 `TTTS3039R`
+- 해외증거금 통화별조회 `TTTC2101R`
+
+공통 헤더 / 거래소 (모의: NASD/NYSE/AMEX) / 통화 (USD/HKD/CNY/JPY/VND) 정리 완료. 잔고 응답의 `output1[]` (포지션) / `output2` (계좌 집계) 핵심 필드와 매수가능금액 응답의 `output` 핵심 필드를 catalog 화.
+
+## 채워진 값 — §4 모의투자 주문
+
+Paper-지원 endpoint 5 종:
+
+- 해외주식 주문 `VTTT1002U` (미국 매수) / `VTTT1001U` (미국 매도) (`/order`)
+- 해외주식 정정취소주문 `VTTT1004U` (미국 정정·취소) (`/order-rvsecncl`)
+- 해외주식 예약주문 접수 `VTTT3014U` / `VTTT3016U` (미국) / `VTTS3013U` (아시아) (`/order-resv`)
+- 해외주식 예약주문 취소 `VTTT3017U` (미국만) (`/order-resv-ccnl`)
+- 해외주식 주문체결내역 `VTTS3035R` (`/inquire-ccnl`, 모의 제약 다수)
+
+Paper-미지원 endpoint 6 종 (실전 TR_ID 만 명시):
+
+- 해외주식 미체결내역 `TTTS3018R` (`/inquire-nccs`)
+- 해외주식 예약주문조회 `TTTT3039R` / `TTTS3014R` (`/order-resv-list`)
+- 해외주식 미국주간주문 `TTTS6036U` / `TTTS6037U` (`/daytime-order`)
+- 해외주식 미국주간정정취소 `TTTS6038U` (`/daytime-order-rvsecncl`)
+- 해외주식 지정가주문번호조회 `TTTS6058R`
+- 해외주식 지정가체결내역조회 `TTTS6059R`
+
+핵심 결론: **모의투자는 `ORD_DVSN=00` 지정가 (LIMIT) 만 지원**. 시장가 / LOO / LOC / MOO / MOC / TWAP / VWAP 모두 모의 미지원. 본 저장소의 `OrderType.MARKET` 3중 가드 정책과 일치.
+
+## 부족한 값 (`<TBD>` 로 남긴 항목)
+
+- 모의에서 매매 가능한 정확한 종목 list (주문 sheet 개요만 "일부 종목" 명시, 종목 list 부재).
+- 체결기준 현재잔고 `output3` 의 sub-field 상세 (모의에서 사용 가능한 유일한 응답이지만 sub-field 표는 별 job 으로 catalog 화 권장).
+- 주문체결내역 `output[]` array sub-field 상세.
+- 아시아 거래소 (`SEHK`/`SHAA`/`SZAA`/`TKSE`/`HASE`/`VNSE`) 의 모의 TR_ID full list (6.xlsx 주문 sheet `tr_id` 셀 본문에 일부 명시되어 있으나 본 catalog 는 미국 + 대표 아시아만 표시. 필요시 별 job 으로 보강).
+
+## 안전 회귀 확인
+
+- 코드 / 테스트 변경 0건. 
+- `python -m compileall app tests` 통과.
+- 안전 grep clean:
+  - `Bearer eyJ` / `appkey=` / `appsecret=` / `access_token=` 등 자격증명 패턴 0 줄.
+  - `12345678` / `fake-key` / `fake-secret` 등 fixture 잔재 0 줄.
+  - `import requests` / `httpx` / `aiohttp` / `urllib3` 0 줄.
+- `MISSING_MARKET_DATA_VALUES.md` 무변동.
+- §1 OAuth / §3 시세 / 정책 / 다음 작업 가이드 / 보안 섹션 무변동.
+- `OrderType.MARKET` 가드 / live trading 가드 / RiskEngine / OMS / PaperBroker / KIS adapter 정책 변동 0건.
+- 자동 git commit / push / merge / deploy 수행 안 함.
+
+## 다음 작업 진행 가능 여부 판단
+
+- **`api-account-001` (해외주식 계좌 / 잔고 / 매수가능금액 / 체결기준 현재잔고 paper HTTP 연결)**: 진행 가능. 잔고 (`VTTS3012R`) 와 매수가능금액 (`VTTS3007R`) 의 endpoint / TR ID / headers / request fields / response fields 가 모두 `Confirmed: yes`. 체결기준 현재잔고 (`VTRP6504R`) 는 모의 `output3` 한정이라 부분 구현 가능. 후속 job 은 §2 의 catalog 만 참고하고 추측 금지.
+- **`api-orders-paper-001` (해외주식 모의 주문 / 정정·취소 paper HTTP 연결)**: 진행 가능. 주문 (`VTTT1002U` 미국매수 / `VTTT1001U` 미국매도) 과 정정취소 (`VTTT1004U`) 의 endpoint / TR ID / headers / request body fields / response body fields 가 모두 `Confirmed: yes`. **단 LIMIT 만 허용** — 본 저장소의 `OrderType.MARKET` 3중 가드를 그대로 유지하고 `ORD_DVSN=00` 만 송신한다. `KIS_ORDER_DRY_RUN=true` 기본값 + `validate_kis_order_request` pre-flight + OMS 단독 executable order 생성 + Strategy/Agent 의 broker 직접 호출 금지 정책 그대로.
+- 미체결 (`TTTS3018R`) / 예약주문조회 / 미국주간 / 지정가주문번호·체결내역 endpoint 는 모의 미지원이므로 paper 단계에서는 `NotImplementedError` 유지.
+
+READY FOR REVIEW
+```
+
+## 4. 자가 점검 (구현 후)
+
+- [ ] `docs/kis/MISSING_OFFICIAL_VALUES.md` §2 와 §4 본문만 변경됐다. 다른 섹션 변동 0 줄 (`git diff` 검증).
+- [ ] `docs/kis/MISSING_MARKET_DATA_VALUES.md` 변경 0 줄.
+- [ ] `app/`, `tests/`, `.env*`, `pyproject.toml`, `pytest.ini`, `README.md`, `app/api/*`, `app/static/*`, `app/main.py`, `app/config.py`, `app/broker/*`, `app/oms/*`, `app/risk/*`, `app/portfolio/*`, `app/strategy/*`, `app/session/*`, `app/runtime/*` 변경 0 건.
+- [ ] catalog 본문에 실 app key / app secret / 계좌번호 / Bearer / refresh token / access token 등장 0 회. `Bearer ${access_token}` placeholder 만 허용.
+- [ ] `python -m compileall app tests` 통과.
+- [ ] 안전 grep (Bearer eyJ / appkey= / appsecret= / access_token= / fake-key / fake-secret / 12345678 / import requests 등) 모두 0 줄.
+- [ ] `patch.md` 가 §A.3 양식 그대로 (변경 파일 / 채운 값 / 부족한 값 / 안전 회귀 / 다음 작업 가능 여부) 포함.
+- [ ] commit / push / merge / deploy 를 너가 직접 실행하지 않았다.
