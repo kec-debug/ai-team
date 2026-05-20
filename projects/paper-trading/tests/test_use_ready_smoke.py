@@ -124,4 +124,4 @@ def test_smoke_dashboard_loads_html():
         response = client.get("/dashboard")
     assert response.status_code == 200
     assert "<html" in response.text or "<!doctype" in response.text.lower()
-    assert "원본 JSON 보기" in response.text
+    assert "원본 데이터 보기" in response.text

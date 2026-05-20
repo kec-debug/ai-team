@@ -148,10 +148,11 @@
   .chart-bar { fill: #86b7c5; }
   .chart-bar.alt { fill: #f0b76f; }
   .chart-grid { stroke: #dfe7eb; stroke-width: 1; }
-  table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+  table { width: 100%; border-collapse: collapse; font-size: .9rem; table-layout: auto; }
   th, td { text-align: left; border-bottom: 1px solid #edf1f4; padding: 7px 8px; vertical-align: top; }
-  th { color: #58646f; font-weight: 600; width: 34%; }
-  td { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+  th { color: #58646f; font-weight: 600; width: 150px; min-width: 120px; white-space: nowrap; word-break: keep-all; }
+  td { font-family: inherit; word-break: keep-all; overflow-wrap: anywhere; }
+  .reason-text { line-height: 1.65; word-break: keep-all; overflow-wrap: anywhere; }
   label { display: grid; gap: 4px; font-size: .86rem; color: #4b5560; }
   input, select {
     border: 1px solid #b8c4cc;
@@ -182,7 +183,7 @@
     .topbar { grid-template-columns: 1fr; }
     .nav { grid-template-columns: 1fr; }
     .metric-card, .wide { grid-column: 1 / -1; }
-    th, td { display: block; width: 100%; }
+    th, td { display: block; width: 100%; min-width: 0; }
     th { border-bottom: 0; padding-bottom: 0; }
     td { padding-top: 2px; }
   }
@@ -192,12 +193,12 @@
 <div class="shell">
   <div id="ops-banner" class="banner banner-info" role="status">
     <strong id="ops-banner-icon">안내</strong>
-    <span id="ops-banner-text">현재 시스템은 paper / dry-run 전용입니다. live trading 은 비활성화되어 있으며, 실제 주문은 전송되지 않습니다.</span>
+    <span id="ops-banner-text">현재 시스템은 모의거래 / 모의 반복 전용입니다. 실거래는 비활성화되어 있으며, 실제 주문은 전송되지 않습니다.</span>
   </div>
   <div class="topbar">
     <div>
       <h1>모의거래 운영 콘솔</h1>
-      <div class="subtitle">모의거래 대시보드 · paper / dry-run 전용 · 실거래 잠금</div>
+      <div class="subtitle">모의거래 대시보드 · 모의 반복 전용 · 실거래 잠금</div>
     </div>
     <div class="button-row">
       <button id="btn-refresh" class="primary">⟳ 상태 새로고침</button>
@@ -210,11 +211,11 @@
   <div class="sr-marker" aria-hidden="true">
     안전 상태 현재 모드 실거래 상태 실제 주문 가능 여부 수동 모의 주문 바로 모의테스트 해보기 예시 모의 주문 실행
     계좌 / 손익 시작 현금 현재 현금 통화별 현금 통화별 실현 손익 통화별 평가 손익 보유 종목 보유 종목 수
-    주문 내역 체결 내역 매수 매도 실현 손익 평가 손익 최근 거절 주문 Paper Engine 상태 Paper Engine 활성
-    Journal 활성 Persistent 로그 경로 마지막 체결 시각 마지막 거래 시각 KIS 상태 Dry-run 상태 최신 리포트 해석
-    한글 해석 다음 행동 제안 상태 새로고침 모의 주문 실행 Dry-run 시작 Tick 1회 실행 Dry-run 중지 리포트 분석
-    최신 리포트 보기 Overview Paper Training Agent Research Strategy Lab Orders / Fills Portfolio Reports Live Validation Risk / Ops
-    Training 시작 Agent 분석 실행
+    주문 내역 체결 내역 매수 매도 실현 손익 평가 손익 최근 거절 주문 모의 엔진 상태 모의 엔진 활성
+    거래 기록 활성 저장 로그 경로 마지막 체결 시각 마지막 거래 시각 KIS 상태 모의 반복 상태 최신 리포트 해석
+    한글 해석 다음 행동 제안 상태 새로고침 모의 주문 실행 모의 반복 시작 한 번 실행 모의 반복 중지 리포트 분석
+    최신 리포트 보기 운영 개요 모의 훈련 에이전트 리서치 전략 연구실 주문·체결 포트폴리오 리포트 실거래 검증 리스크·운영
+    훈련 시작 에이전트 분석 실행
   </div>
 
   <div class="layout">
@@ -231,17 +232,17 @@
     </nav>
 
     <main>
-      <section id="overview-section" data-test-marker="Overview">
+      <section id="overview-section" data-test-marker="운영 개요">
         <div class="section-head">
           <h2>운영 개요</h2>
           <span class="pill"><span class="status-dot good"></span>실주문 차단</span>
         </div>
         <div class="console-grid">
-          <div class="metric-card"><h3>현재 모드</h3><div id="ov-paper-mode" class="value">-</div><div class="muted">Paper mode</div></div>
-          <div class="metric-card locked"><h3>실거래 잠금</h3><div id="ov-live-locked" class="value">-</div><div class="muted">Live locked</div></div>
+          <div class="metric-card"><h3>현재 모드</h3><div id="ov-paper-mode" class="value">-</div><div class="muted">모의거래 모드</div></div>
+          <div class="metric-card locked"><h3>실거래 잠금</h3><div id="ov-live-locked" class="value">-</div><div class="muted">실주문 차단 상태</div></div>
           <div class="metric-card"><h3>킬 스위치</h3><div id="ov-kill-switch" class="value">-</div><div class="muted">신규 주문 보호</div></div>
-          <div class="metric-card"><h3>시장가 차단</h3><div id="ov-market-disabled" class="value">-</div><div class="muted">Market order disabled</div></div>
-          <div class="metric-card"><h3>KIS 드라이런</h3><div id="ov-kis-dry-run" class="value">-</div><div class="muted">실제 제출 없음</div></div>
+          <div class="metric-card"><h3>시장가 차단</h3><div id="ov-market-disabled" class="value">-</div><div class="muted">시장가 주문 차단</div></div>
+          <div class="metric-card"><h3>KIS 모의 제출</h3><div id="ov-kis-dry-run" class="value">-</div><div class="muted">실제 제출 없음</div></div>
           <div class="metric-card"><h3>현재 현금</h3><div id="ov-cash" class="value">-</div><div id="ov-positions" class="muted">보유 종목: -</div></div>
           <div class="metric-card"><h3>현재 수익률</h3><div id="ov-return-rate" class="value">-</div><div id="ov-profit-loss" class="muted">손익: -</div></div>
           <div class="metric-card"><h3>평가 자산</h3><div id="ov-equity" class="value">-</div><div class="muted">현금 + 평가금액</div></div>
@@ -265,33 +266,33 @@
         </div>
       </section>
 
-      <section id="paper-training-section" data-test-marker="Paper Training">
+      <section id="paper-training-section" data-test-marker="모의 훈련">
         <div class="section-head">
           <h2>모의 훈련</h2>
           <div class="button-row">
-            <button id="btn-training-start">▶ Training 시작</button>
-            <button id="btn-training-tick">↻ Training Tick</button>
-            <button id="btn-training-stop" class="danger-soft">■ Training 중지</button>
+            <button id="btn-training-start">▶ 훈련 시작</button>
+            <button id="btn-training-tick">↻ 훈련 한 번 실행</button>
+            <button id="btn-training-stop" class="danger-soft">■ 훈련 중지</button>
             <button id="btn-training-status">상태 확인</button>
           </div>
         </div>
         <div class="button-row">
-          <button id="btn-start-dry-run">Dry-run 시작</button>
-          <button id="btn-tick">Tick 1회 실행</button>
-          <button id="btn-stop-dry-run">Dry-run 중지</button>
+          <button id="btn-start-dry-run">모의 반복 시작</button>
+          <button id="btn-tick">한 번 실행</button>
+          <button id="btn-stop-dry-run">모의 반복 중지</button>
         </div>
         <div class="console-grid">
-          <div class="metric-card"><h3>훈련 실행</h3><div id="training-running" class="value">-</div><div id="training-last-tick" class="muted">마지막 Tick: -</div></div>
-          <div class="metric-card"><h3>누적 Tick</h3><div id="training-ticks" class="value">-</div><div id="training-error" class="muted">마지막 오류: -</div></div>
+          <div class="metric-card"><h3>훈련 실행</h3><div id="training-running" class="value">-</div><div id="training-last-tick" class="muted">마지막 실행: -</div></div>
+          <div class="metric-card"><h3>누적 실행</h3><div id="training-ticks" class="value">-</div><div id="training-error" class="muted">마지막 오류: -</div></div>
           <div class="metric-card wide"><h3>사용 전략</h3><div id="training-strategies" class="pill-row"></div></div>
           <div class="metric-card"><h3>훈련 이력</h3><div id="training-runs" class="value">-</div><div class="muted">최근 실행 묶음</div></div>
         </div>
       </section>
 
-      <section id="agent-research-section" data-test-marker="Agent Research">
+      <section id="agent-research-section" data-test-marker="에이전트 리서치">
         <div class="section-head">
           <h2>에이전트 리서치</h2>
-          <button id="btn-agent-run">Agent 분석 실행</button>
+          <button id="btn-agent-run">에이전트 분석 실행</button>
         </div>
         <div class="console-grid">
           <div class="metric-card">
@@ -319,7 +320,7 @@
           </div>
           <div class="metric-card wide">
             <h3>분석 상태</h3>
-            <table><tr><th>제공자</th><td id="agent-provider">-</td></tr><tr><th>파싱 상태</th><td id="agent-parse">-</td></tr><tr><th>Trace</th><td id="agent-trace">-</td></tr></table>
+            <table><tr><th>분석 방식</th><td id="agent-provider">-</td></tr><tr><th>해석 상태</th><td id="agent-parse">-</td></tr><tr><th>실행 기록</th><td id="agent-trace">-</td></tr></table>
           </div>
           <div class="metric-card wide">
             <h3>차단 사유 / 후보</h3>
@@ -329,29 +330,29 @@
             <div id="agent-recommendations" class="pill-row">-</div>
           </div>
         </div>
-        <span class="sr-marker">Agent Research</span>
+        <span class="sr-marker">에이전트 리서치</span>
       </section>
 
-      <section id="strategy-lab-section" data-test-marker="Strategy Lab">
+      <section id="strategy-lab-section" data-test-marker="전략 연구실">
         <div class="section-head">
           <h2>전략 연구실</h2>
           <span class="muted">전략은 주문하지 않고 후보만 만듭니다.</span>
         </div>
         <div id="strategy-list" class="console-grid"></div>
         <details><summary>최근 전략 시뮬레이션 원본</summary><pre id="strategy-sim-result">{}</pre></details>
-        <span class="sr-marker">Strategy Lab</span>
+        <span class="sr-marker">전략 연구실</span>
       </section>
 
-      <section id="orders-fills-section" data-test-marker="Orders / Fills">
-        <div class="section-head"><h2>주문·체결</h2><span class="muted">Orders / Fills</span></div>
+      <section id="orders-fills-section" data-test-marker="주문·체결">
+        <div class="section-head"><h2>주문·체결</h2><span class="muted">모의 주문과 체결 내역</span></div>
         <div class="console-grid">
           <div class="metric-card wide"><h3>최근 주문</h3><div id="of-orders">-</div><table id="paper-open-orders"><tbody><tr><td>미체결 주문이 없습니다.</td></tr></tbody></table></div>
           <div class="metric-card wide"><h3>최근 체결</h3><div id="of-fills">-</div><table id="paper-fills"><tbody><tr><td>체결 내역이 없습니다.</td></tr></tbody></table></div>
         </div>
       </section>
 
-      <section id="portfolio-section" data-test-marker="Portfolio">
-        <div class="section-head"><h2>포트폴리오</h2><span class="muted">Portfolio</span></div>
+      <section id="portfolio-section" data-test-marker="포트폴리오">
+        <div class="section-head"><h2>포트폴리오</h2><span class="muted">보유 종목과 손익</span></div>
         <div class="console-grid">
           <div class="metric-card"><h3>현금</h3><div id="portfolio-cash" class="value">-</div></div>
           <div class="metric-card"><h3>보유 종목 수</h3><div id="portfolio-positions" class="value">-</div><div id="positions-count" class="muted">보유 종목 수: 0</div></div>
@@ -368,17 +369,17 @@
         </div>
         <form id="paper-order-form">
           <div class="form-grid">
-            <label>종목 코드 / symbol <input id="order-symbol" name="symbol" value="AAPL" autocomplete="off"></label>
-            <label>매수/매도 / side <select id="order-side" name="side"><option value="buy">매수</option><option value="sell">매도</option></select></label>
-            <label>수량 / quantity <input id="order-quantity" name="quantity" type="number" min="1" step="1" value="1"></label>
-            <label>주문 유형 / order_type <select id="order-type" name="order_type"><option value="limit">지정가</option><option value="stop_limit">스탑 지정가</option><option value="market">시장가</option></select></label>
-            <label>지정가 / limit_price <input id="order-limit-price" name="limit_price" type="number" min="0.01" step="0.01" value="100"></label>
-            <label>스탑 가격 / stop_price <input id="order-stop-price" name="stop_price" type="number" min="0.01" step="0.01"></label>
-            <label>모의 매수호가 / mock_bid <input id="mock-bid" name="mock_bid" type="number" min="0.01" step="0.01" value="99"></label>
-            <label>모의 매도호가 / mock_ask <input id="mock-ask" name="mock_ask" type="number" min="0.01" step="0.01" value="100"></label>
-            <label>모의 현재가 / mock_last <input id="mock-last" name="mock_last" type="number" min="0.01" step="0.01" value="100"></label>
-            <label>거래량 / mock_volume <input id="mock-volume" name="mock_volume" type="number" min="0" step="1" value="100"></label>
-            <label>통화 / currency <input id="order-currency" name="currency" value="USD" autocomplete="off"></label>
+            <label>종목 코드 <input id="order-symbol" name="symbol" value="AAPL" autocomplete="off"></label>
+            <label>매수/매도 <select id="order-side" name="side"><option value="buy">매수</option><option value="sell">매도</option></select></label>
+            <label>수량 <input id="order-quantity" name="quantity" type="number" min="1" step="1" value="1"></label>
+            <label>주문 유형 <select id="order-type" name="order_type"><option value="limit">지정가</option><option value="stop_limit">스탑 지정가</option><option value="market">시장가</option></select></label>
+            <label>지정가 <input id="order-limit-price" name="limit_price" type="number" min="0.01" step="0.01" value="100"></label>
+            <label>스탑 가격 <input id="order-stop-price" name="stop_price" type="number" min="0.01" step="0.01"></label>
+            <label>모의 매수호가 <input id="mock-bid" name="mock_bid" type="number" min="0.01" step="0.01" value="99"></label>
+            <label>모의 매도호가 <input id="mock-ask" name="mock_ask" type="number" min="0.01" step="0.01" value="100"></label>
+            <label>모의 현재가 <input id="mock-last" name="mock_last" type="number" min="0.01" step="0.01" value="100"></label>
+            <label>거래량 <input id="mock-volume" name="mock_volume" type="number" min="0" step="1" value="100"></label>
+            <label>통화 <input id="order-currency" name="currency" value="USD" autocomplete="off"></label>
           </div>
         </form>
         <div id="paper-order-summary" class="summary warn">아직 실행한 모의 주문이 없습니다.</div>
@@ -387,7 +388,7 @@
           <tr><th>위험 검사 결과</th><td id="order-riskcheck-ko">-</td></tr>
           <tr><th>거절 사유</th><td id="order-reject-ko">-</td></tr>
         </table>
-        <details><summary>원본 JSON 보기</summary><pre id="paper-order-result">{}</pre></details>
+        <details><summary>원본 데이터 보기</summary><pre id="paper-order-result">{}</pre></details>
       </section>
 
       <section id="quick-demo-section">
@@ -398,7 +399,7 @@
         <p class="muted">예시 주문은 TEST 10주를 지정가 100에 매수하고, 모의 매도호가 100으로 즉시 체결되도록 입력합니다.</p>
       </section>
 
-      <section id="reports-section" data-test-marker="Reports">
+      <section id="reports-section" data-test-marker="리포트">
         <div class="section-head">
           <h2>리포트</h2>
           <div class="button-row"><button id="btn-analyze">리포트 분석</button><button id="btn-latest">최신 리포트 보기</button></div>
@@ -407,7 +408,7 @@
         <div id="report-meta" class="log">-</div>
         <div class="console-grid">
           <div class="metric-card"><h3>실행 상태</h3><div id="report-state" class="value">-</div></div>
-          <div class="metric-card"><h3>Tick 수</h3><div id="report-ticks" class="value">-</div></div>
+          <div class="metric-card"><h3>실행 수</h3><div id="report-ticks" class="value">-</div></div>
           <div class="metric-card"><h3>후보 수</h3><div id="report-candidates" class="value">-</div></div>
           <div class="metric-card"><h3>생성된 주문 수</h3><div id="report-orders" class="value">-</div></div>
           <div class="metric-card"><h3>체결 수</h3><div id="report-fills" class="value">-</div></div>
@@ -415,22 +416,22 @@
           <div class="metric-card"><h3>오류 수</h3><div id="report-errors" class="value">-</div></div>
           <div class="metric-card full"><h3>한글 해석</h3><div id="report-explanation" class="summary warn">아직 리포트가 없습니다.</div><h3>다음 행동 제안</h3><div id="report-suggestions" class="log">-</div></div>
         </div>
-        <details><summary>원본 JSON 보기</summary><pre id="report-content">{}</pre></details>
+        <details><summary>원본 데이터 보기</summary><pre id="report-content">{}</pre></details>
       </section>
 
-      <section id="live-validation-console-section" class="locked" data-test-marker="Live Validation">
+      <section id="live-validation-console-section" class="locked" data-test-marker="실거래 검증">
         <div class="section-head">
           <h2>실거래 준비 콘솔</h2>
           <div class="button-row">
-            <button id="btn-live-validation-arm">Live Validation 켜기</button>
-            <button id="btn-live-validation-disarm" class="danger-soft">Live Validation 끄기</button>
+            <button id="btn-live-validation-arm">실거래 검증 켜기</button>
+            <button id="btn-live-validation-disarm" class="danger-soft">실거래 검증 끄기</button>
             <button id="btn-kis-auth">KIS 인증 확인</button>
             <button id="btn-kis-sync">KIS 계좌 동기화</button>
             <button id="btn-live-order-entry-request" class="danger-soft">실전 주문 준비 요청</button>
             <button id="btn-live-order-entry-disable">실전 주문 준비 해제</button>
           </div>
         </div>
-        <p class="muted">Live Validation은 실주문 전 운영 점검 모드입니다. 켜도 실주문은 계속 차단되고, 사전 점검 상태만 더 선명하게 추적합니다.</p>
+        <p class="muted">실거래 검증은 실주문 전 운영 점검 모드입니다. 켜도 실주문은 계속 차단되고, 사전 점검 상태만 더 선명하게 추적합니다.</p>
         <table>
           <tr><th>검증 모드</th><td id="live-armed">-</td></tr>
           <tr><th>잠금 상태</th><td id="live-locked">-</td></tr>
@@ -443,9 +444,9 @@
         </table>
       </section>
 
-      <section id="risk-ops-section" data-test-marker="Risk / Ops">
-        <div class="section-head"><h2>리스크·운영</h2><span class="muted">Risk / Ops</span></div>
-        <div id="risk-ops-summary" class="summary warn">preflight 확인 대기 중</div>
+      <section id="risk-ops-section" data-test-marker="리스크·운영">
+        <div class="section-head"><h2>리스크·운영</h2><span class="muted">안전 점검과 운영 상태</span></div>
+        <div id="risk-ops-summary" class="summary warn">사전 점검 확인 대기 중</div>
         <div class="console-grid">
           <div class="metric-card wide">
             <h3>운영 안전 상태</h3>
@@ -461,7 +462,7 @@
             <h3>KIS 상태</h3>
             <table>
               <tr><th>KIS 설정</th><td id="kis-config-loaded">-</td></tr>
-              <tr><th>KIS API 모드</th><td id="kis-api-mode">-</td></tr>
+              <tr><th>KIS 연결 모드</th><td id="kis-api-mode">-</td></tr>
               <tr><th>KIS 인증</th><td id="kis-authenticated">-</td></tr>
               <tr><th>KIS 계좌</th><td id="kis-account-loaded">-</td></tr>
               <tr><th>KIS 시세</th><td id="kis-market-data">-</td></tr>
@@ -474,27 +475,27 @@
       </section>
 
       <section id="live-validation-readiness">
-        <div class="section-head"><h2>Live Validation 준비 상태</h2><span class="muted">읽기 전용</span></div>
+        <div class="section-head"><h2>실거래 검증 준비 상태</h2><span class="muted">읽기 전용</span></div>
         <table>
           <tbody>
-            <tr><th>live_trading_enabled</th><td id="lv-live-trading-enabled">-</td></tr>
-            <tr><th>trading_mode</th><td id="lv-trading-mode">-</td></tr>
-            <tr><th>market_orders_allowed</th><td id="lv-market-orders-allowed">-</td></tr>
-            <tr><th>kis_order_dry_run</th><td id="lv-kis-order-dry-run">-</td></tr>
-            <tr><th>kill_switch_engaged</th><td id="lv-kill-switch">-</td></tr>
-            <tr><th>broker_type</th><td id="lv-broker-type">-</td></tr>
-            <tr><th>kis_config_loaded</th><td id="lv-kis-config-loaded">-</td></tr>
-            <tr><th>kis_authenticated</th><td id="lv-kis-authenticated">-</td></tr>
-            <tr><th>kis_market_data_available</th><td id="lv-kis-market-data">-</td></tr>
-            <tr><th>kis_account_loaded</th><td id="lv-kis-account-loaded">-</td></tr>
-            <tr><th>kis_order_entry_ready</th><td id="lv-kis-order-entry-ready">-</td></tr>
-            <tr><th>live_validation_ready</th><td id="lv-validation-ready">-</td></tr>
+            <tr><th>실거래 활성화</th><td id="lv-live-trading-enabled">-</td></tr>
+            <tr><th>거래 모드</th><td id="lv-trading-mode">-</td></tr>
+            <tr><th>시장가 주문 허용</th><td id="lv-market-orders-allowed">-</td></tr>
+            <tr><th>KIS 모의 제출</th><td id="lv-kis-order-dry-run">-</td></tr>
+            <tr><th>킬 스위치</th><td id="lv-kill-switch">-</td></tr>
+            <tr><th>브로커 종류</th><td id="lv-broker-type">-</td></tr>
+            <tr><th>KIS 설정 로드</th><td id="lv-kis-config-loaded">-</td></tr>
+            <tr><th>KIS 인증</th><td id="lv-kis-authenticated">-</td></tr>
+            <tr><th>KIS 시세 연결</th><td id="lv-kis-market-data">-</td></tr>
+            <tr><th>KIS 계좌 로드</th><td id="lv-kis-account-loaded">-</td></tr>
+            <tr><th>KIS 주문 준비</th><td id="lv-kis-order-entry-ready">-</td></tr>
+            <tr><th>검증 준비 완료</th><td id="lv-validation-ready">-</td></tr>
           </tbody>
         </table>
       </section>
 
       <section id="preflight-checklist">
-        <div class="section-head"><h2>사전 점검 Preflight Checklist</h2><span class="muted">필수 확인 항목</span></div>
+        <div class="section-head"><h2>사전 점검 목록</h2><span class="muted">필수 확인 항목</span></div>
         <ul id="preflight-items"></ul>
       </section>
 
@@ -515,21 +516,21 @@
       </section>
 
       <section id="paper-engine-section">
-        <h2>Paper Engine 상태</h2>
+        <h2>모의 엔진 상태</h2>
         <table>
-          <tr><th>Paper Engine 활성</th><td id="eng-engine-enabled">-</td></tr>
-          <tr><th>Journal 활성</th><td id="eng-journal-enabled">-</td></tr>
-          <tr><th>Persistent 로그 경로</th><td id="eng-journal-log">-</td></tr>
+          <tr><th>모의 엔진 활성</th><td id="eng-engine-enabled">-</td></tr>
+          <tr><th>거래 기록 활성</th><td id="eng-journal-enabled">-</td></tr>
+          <tr><th>저장 로그 경로</th><td id="eng-journal-log">-</td></tr>
           <tr><th>마지막 체결 시각</th><td id="eng-last-fill">-</td></tr>
           <tr><th>마지막 거래 시각</th><td id="eng-last-trade">-</td></tr>
         </table>
       </section>
 
       <section id="dry-run-status-section">
-        <h2>Dry-run 상태</h2>
+        <h2>모의 반복 상태</h2>
         <table>
           <tr><th>실행 상태</th><td id="dr-running">-</td></tr>
-          <tr><th>Tick 수</th><td id="dr-ticks-total">-</td></tr>
+          <tr><th>실행 수</th><td id="dr-ticks-total">-</td></tr>
           <tr><th>후보 수</th><td id="dr-candidates-seen">-</td></tr>
           <tr><th>생성된 주문 수</th><td id="dr-orders-created">-</td></tr>
           <tr><th>오류 수</th><td id="dr-errors-total">-</td></tr>
@@ -607,7 +608,7 @@ function setText(id, value) {
     el.textContent = value ? "예" : "아니오";
     el.className = value ? "ok" : "";
   } else {
-    el.textContent = String(value);
+    el.textContent = valueKo(value);
   }
 }
 
@@ -638,6 +639,74 @@ function formatMoney(value, currency) {
 function formatRate(value) {
   const sign = value > 0 ? "+" : "";
   return sign + value.toFixed(2) + "%";
+}
+
+const VALUE_LABELS = {
+  deterministic_stub: "규칙 기반 분석",
+  deterministic_flow_scorer: "규칙 기반 수급 분석",
+  parsed: "정상 해석",
+  not_run: "아직 실행 전",
+  blocked: "차단됨",
+  ready: "준비 완료",
+  available: "조회 가능",
+  unavailable: "조회 불가",
+  dry_run: "모의 검증",
+  submitted: "제출됨",
+  open: "미체결",
+  filled: "체결됨",
+  cancelled: "취소됨",
+  paper: "모의거래",
+  mock: "모의 응답",
+  PaperBroker: "모의 브로커",
+  KisBroker: "한국투자증권 브로커",
+  validation_armed: "검증 모드",
+  locked: "잠금",
+  pre_market: "장전",
+  regular: "정규장",
+  after_hours: "장후",
+};
+
+const REASON_LABELS = {
+  research_only_no_oms_submission: "리서치 전용: 주문관리시스템으로 주문을 보내지 않음",
+  no_llm_call_performed: "외부 인공지능 호출 없이 규칙 기반으로 분석",
+  orders_must_flow_through_risk_oms_broker: "주문은 반드시 리스크 엔진과 주문관리시스템을 통과해야 함",
+  accumulation_requires_foreign_institution_or_large_trade_flow: "세력/수급 분석에는 외국인·기관·대량체결 순매수 데이터가 필요",
+  pullback_requires_current_price_and_vwap: "눌림목 분석에는 현재가와 평균체결가 데이터가 필요",
+  volume_profile_requires_volume_and_average_volume: "매물대 분석에는 현재 거래량과 평균 거래량 데이터가 필요",
+  whale_flow_requires_large_trade_net_value: "큰손 흐름 분석에는 대량체결 순매수 데이터가 필요",
+  visible_flow_data_insufficient_for_positive_signal: "확정 신호를 내기에는 관측 가능한 수급 데이터가 부족",
+  operator_request_required: "운영자 실전 준비 요청 필요",
+  live_validation_arm_required: "실거래 검증 모드 켜기 필요",
+  preflight_not_ready: "사전 점검 미충족",
+  live_trading_enabled_env_false: "환경설정에서 실거래가 꺼져 있음",
+  kis_order_dry_run_enabled: "KIS 주문 드라이런이 켜져 있음",
+  kis_authentication_required: "KIS 인증 필요",
+  kis_account_sync_required: "KIS 계좌 동기화 필요",
+  kis_submission_capability_unavailable: "KIS 주문 제출 기능이 아직 안전 잠금 상태",
+};
+
+function valueKo(value) {
+  if (value === null || value === undefined || value === "") return "-";
+  const key = String(value);
+  return VALUE_LABELS[key] || key;
+}
+
+function reasonKo(value) {
+  if (value === null || value === undefined || value === "") return "-";
+  const key = String(value);
+  return REASON_LABELS[key] || key.replaceAll("_", " ");
+}
+
+function reasonListKo(values) {
+  const data = values || [];
+  return data.length ? data.map(reasonKo).join(" · ") : "차단 사유 없음";
+}
+
+function traceKo(value) {
+  if (!value) return "-";
+  const match = String(value).match(/agent-trace-(\d+)/);
+  if (match) return "분석 실행 " + match[1] + "회";
+  return String(value);
 }
 
 function setSummary(id, text, level) {
@@ -704,7 +773,7 @@ function renderRejectedOrders(rows) {
     return;
   }
   table.innerHTML = "<thead><tr><th>종목</th><th>상태</th><th>사유</th><th>시간</th></tr></thead><tbody>" +
-    data.map((o) => "<tr><td>" + o.symbol + "</td><td>" + (o.status || "-") + "</td><td>" + (o.reason || "-") + "</td><td>" + (o.created_at || "-") + "</td></tr>").join("") +
+    data.map((o) => "<tr><td>" + o.symbol + "</td><td>" + valueKo(o.status || "-") + "</td><td>" + reasonKo(o.reason || "-") + "</td><td>" + (o.created_at || "-") + "</td></tr>").join("") +
     "</tbody>";
 }
 
@@ -737,7 +806,7 @@ function renderPills(id, values) {
   const el = document.getElementById(id);
   if (!el) return;
   const data = values || [];
-  el.innerHTML = data.length ? data.map((value) => "<span class=\"pill\">" + value + "</span>").join("") : "-";
+  el.innerHTML = data.length ? data.map((value) => "<span class=\"pill\">" + valueKo(value) + "</span>").join("") : "-";
 }
 
 function renderStrategyList(payload) {
@@ -753,7 +822,7 @@ function renderStrategyList(payload) {
     "<div class=\"pill-row\"><span class=\"pill\">상태: " + (item.enabled ? "활성" : "비활성") + "</span>" +
     "<span class=\"pill\">모의 전용: " + (item.paper_only ? "예" : "아니오") + "</span>" +
     "<span class=\"pill\">브로커 직접 호출: " + (item.broker_direct_call ? "있음" : "없음") + "</span></div>" +
-    "<div class=\"muted\">" + (item.blockers || []).join(", ") + "</div></div>"
+    "<div class=\"muted reason-text\">" + reasonListKo(item.blockers || []) + "</div></div>"
   ).join("");
 }
 
@@ -822,11 +891,15 @@ function updateAgentVisuals(agent) {
   const watchlist = agent.watchlist_candidates || [];
   setText("agent-provider", agent.provider_used || "-");
   setText("agent-parse", agent.parse_status || "-");
-  setText("agent-trace", agent.trace_id || agent.trace_count || "-");
+  setText("agent-trace", traceKo(agent.trace_id || agent.trace_count || "-"));
   setText("agent-symbol-count", agent.analysis_count || analyzed.length || 0);
   renderPills("agent-primary-symbols", primary);
   renderPills("agent-watchlist", analyzed.length ? analyzed : watchlist);
-  setText("agent-blockers", (agent.blockers || []).join(", ") || "차단 사유 없음");
+  const agentBlockers = document.getElementById("agent-blockers");
+  if (agentBlockers) {
+    agentBlockers.textContent = reasonListKo(agent.blockers || []);
+    agentBlockers.className = "muted reason-text";
+  }
   renderPills("agent-recommendations", (agent.recommendations || []).map((r) => r.symbol));
   drawSymbolChart(analyzed.length ? analyzed : watchlist, primary);
   updateFlowVisuals(agent.flow_analysis || {});
@@ -839,7 +912,11 @@ function updateFlowVisuals(flow) {
   setText("flow-volume-profile", first.volume_profile_score !== undefined ? first.volume_profile_score : "-");
   setText("flow-pullback", first.pullback_score !== undefined ? first.pullback_score : "-");
   setText("flow-whale", first.whale_flow_score !== undefined ? first.whale_flow_score : "-");
-  setText("flow-blockers", (flow.blockers || first.blockers || []).join(", ") || "차단 사유 없음");
+  const flowBlockers = document.getElementById("flow-blockers");
+  if (flowBlockers) {
+    flowBlockers.textContent = reasonListKo(flow.blockers || first.blockers || []);
+    flowBlockers.className = "reason-text";
+  }
 }
 
 function updateLivePanel(status) {
@@ -848,7 +925,11 @@ function updateLivePanel(status) {
   setText("live-can-trade", boolKo(status.can_trade, "가능", "불가능"));
   const orderEntry = status.order_entry || {};
   setText("live-order-entry-mode", orderEntry.mode || "-");
-  setText("live-order-entry-blockers", (orderEntry.blockers || []).join(", ") || "-");
+  const liveBlockers = document.getElementById("live-order-entry-blockers");
+  if (liveBlockers) {
+    liveBlockers.textContent = reasonListKo(orderEntry.blockers || []);
+    liveBlockers.className = "reason-text";
+  }
   setText("live-message", status.message_ko || "-");
   const section = document.getElementById("live-validation-console-section");
   if (section) section.className = status.armed ? "locked armed" : "locked";
@@ -875,7 +956,7 @@ function updateReturnAndCharts(account, portfolio, journal, training) {
   const rejected = training && training.recent_counters ? (training.recent_counters["candidates" + "_blocked"] || 0) : 0;
   drawLineChart("equity-chart", [starting, starting + realized, equity - unrealized, equity], { title: "시작 → 실현 → 평가 → 현재", rate: starting ? formatRate(rate) : "-" });
   drawBarChart("activity-chart", [
-    { label: "Tick", value: ticks },
+    { label: "실행", value: ticks },
     { label: "주문", value: orders },
     { label: "체결", value: fills },
     { label: "차단", value: rejected }
@@ -895,7 +976,7 @@ async function refreshProductConsole() {
   try {
     training = await fetchJson(ENDPOINTS.paperTrainingStatus);
     setText("training-running", training.running ? "실행 중" : "정지");
-    setText("training-last-tick", "마지막 Tick: " + (training.last_tick_at || "-"));
+    setText("training-last-tick", "마지막 실행: " + (training.last_tick_at || "-"));
     setText("training-ticks", training["ticks" + "_total"]);
     setText("training-error", "마지막 오류: " + (training.last_error || "-"));
     renderPills("training-strategies", training.strategies || []);
@@ -964,7 +1045,7 @@ async function refreshOpsStatus() {
     setText("lv-kis-market-data", ops.kis_market_data_available);
     setText("lv-kis-account-loaded", ops.kis_account_loaded);
     setText("lv-kis-order-entry-ready", ops.kis_order_entry_ready);
-    setText("lv-validation-ready", ops.live_validation_ready ? "READY" : "NOT READY");
+    setText("lv-validation-ready", ops.live_validation_ready ? "준비 완료" : "준비 필요");
     const banner = document.getElementById("ops-banner");
     banner.className = "banner banner-" + ops.banner_level;
     document.getElementById("ops-banner-icon").textContent =
@@ -992,8 +1073,8 @@ async function fetchJson(url, init) {
   let body = null;
   try { body = await response.json(); } catch (_) { body = null; }
   if (!response.ok) {
-    const detail = body && body.detail ? body.detail : response.statusText;
-    throw new Error(url + " -> " + response.status + ": " + detail);
+    const detail = body && body.detail ? reasonKo(body.detail) : response.statusText;
+    throw new Error("요청 실패: " + response.status + " · " + detail);
   }
   return body;
 }
@@ -1045,7 +1126,7 @@ async function refreshAll() {
     setText("dr-orders-created", counters["dry_run_orders" + "_created"]);
     setText("dr-errors-total", counters.errors_total);
     setText("dr-last-error", counters.last_error);
-  } catch (e) { logMsg("Dry-run 상태 오류: " + e.message); }
+  } catch (e) { logMsg("모의 반복 상태 오류: " + e.message); }
   try {
     const report = await fetchJson(ENDPOINTS.paperReportSummary);
     renderReport(report.user_summary || {}, report.summary || {});
@@ -1064,10 +1145,10 @@ async function refreshAll() {
     renderRejectedOrders(journal.recent_orders || []);
     setText("eng-engine-enabled", engine.paper_engine_enabled);
     setText("eng-journal-enabled", engine.paper_journal_enabled);
-    setText("eng-journal-log", engine.paper_journal_log_dir_masked || "disabled");
+    setText("eng-journal-log", engine.paper_journal_log_dir_masked || "비활성");
     setText("eng-last-fill", engine.last_fill_at || "-");
     setText("eng-last-trade", engine.last_trade_at || "-");
-  } catch (e) { logMsg("Paper Engine 상태 오류: " + e.message); }
+  } catch (e) { logMsg("모의 엔진 상태 오류: " + e.message); }
 }
 
 function formValue(id) {
@@ -1130,24 +1211,24 @@ async function postAction(endpoint, body) {
 async function startDryRun() {
   try {
     await postAction(ENDPOINTS.dryRunStart, {});
-    logMsg("Dry-run 시작 완료");
-  } catch (e) { logMsg("Dry-run 시작 오류: " + e.message); }
+    logMsg("모의 반복 시작 완료");
+  } catch (e) { logMsg("모의 반복 시작 오류: " + e.message); }
   refreshAll();
 }
 
 async function stopDryRun() {
   try {
     await postAction(ENDPOINTS.dryRunStop, {});
-    logMsg("Dry-run 중지 완료");
-  } catch (e) { logMsg("Dry-run 중지 오류: " + e.message); }
+    logMsg("모의 반복 중지 완료");
+  } catch (e) { logMsg("모의 반복 중지 오류: " + e.message); }
   refreshAll();
 }
 
 async function tickOnce() {
   try {
     const result = await postAction(ENDPOINTS.dryRunTick, { snapshots: [] });
-    logMsg("Tick " + (result.tick ? result.tick.status : "완료"));
-  } catch (e) { logMsg("Tick 오류: " + e.message); }
+    logMsg("한 번 실행 " + (result.tick ? valueKo(result.tick.status) : "완료"));
+  } catch (e) { logMsg("한 번 실행 오류: " + e.message); }
   refreshAll();
 }
 
@@ -1190,8 +1271,8 @@ async function armLiveValidation() {
   try {
     const result = await postAction(ENDPOINTS.liveArm, { acknowledge: true });
     updateLivePanel(result);
-    logMsg("Live Validation 검증 모드를 켰습니다. 실주문은 계속 차단됩니다.");
-  } catch (e) { logMsg("Live Validation 켜기 오류: " + e.message); }
+    logMsg("실거래 검증 모드를 켰습니다. 실주문은 계속 차단됩니다.");
+  } catch (e) { logMsg("실거래 검증 켜기 오류: " + e.message); }
   refreshAll();
 }
 
@@ -1202,7 +1283,8 @@ async function requestLiveOrderEntry() {
       phrase: "실전거래 위험을 이해하고 직접 승인합니다"
     });
     setText("live-order-entry-mode", result.mode || "-");
-    setText("live-order-entry-blockers", (result.blockers || []).join(", ") || "-");
+    const blockers = document.getElementById("live-order-entry-blockers");
+    if (blockers) blockers.textContent = reasonListKo(result.blockers || []);
     logMsg(result.can_trade ? "실전 주문 준비 완료" : "실전 주문 준비 요청됨: 아직 차단 사유가 있습니다.");
   } catch (e) { logMsg("실전 주문 준비 요청 오류: " + e.message); }
   refreshAll();
@@ -1212,7 +1294,8 @@ async function disableLiveOrderEntry() {
   try {
     const result = await postAction(ENDPOINTS.liveOrderEntryDisable, {});
     setText("live-order-entry-mode", result.mode || "-");
-    setText("live-order-entry-blockers", (result.blockers || []).join(", ") || "-");
+    const blockers = document.getElementById("live-order-entry-blockers");
+    if (blockers) blockers.textContent = reasonListKo(result.blockers || []);
     logMsg("실전 주문 준비를 해제했습니다.");
   } catch (e) { logMsg("실전 주문 준비 해제 오류: " + e.message); }
   refreshAll();
@@ -1222,8 +1305,8 @@ async function disarmLiveValidation() {
   try {
     const result = await postAction(ENDPOINTS.liveDisarm, {});
     updateLivePanel(result);
-    logMsg("Live Validation 검증 모드를 껐습니다.");
-  } catch (e) { logMsg("Live Validation 끄기 오류: " + e.message); }
+    logMsg("실거래 검증 모드를 껐습니다.");
+  } catch (e) { logMsg("실거래 검증 끄기 오류: " + e.message); }
   refreshAll();
 }
 
@@ -1259,7 +1342,7 @@ document.getElementById("btn-stop-dry-run").addEventListener("click", stopDryRun
 document.getElementById("btn-analyze").addEventListener("click", analyze);
 document.getElementById("btn-latest").addEventListener("click", showLatest);
 document.getElementById("btn-training-start").addEventListener("click", function () { trainingAction(ENDPOINTS.paperTrainingStart, "훈련 시작"); });
-document.getElementById("btn-training-tick").addEventListener("click", function () { trainingAction(ENDPOINTS.paperTrainingTick, "훈련 Tick"); });
+document.getElementById("btn-training-tick").addEventListener("click", function () { trainingAction(ENDPOINTS.paperTrainingTick, "훈련 한 번 실행"); });
 document.getElementById("btn-training-stop").addEventListener("click", function () { trainingAction(ENDPOINTS.paperTrainingStop, "훈련 중지"); });
 document.getElementById("btn-training-status").addEventListener("click", refreshProductConsole);
 document.getElementById("btn-agent-run").addEventListener("click", runAgent);

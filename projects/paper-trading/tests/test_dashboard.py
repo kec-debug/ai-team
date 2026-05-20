@@ -52,35 +52,35 @@ def test_dashboard_has_required_sections_and_buttons():
         "실현 손익",
         "평가 손익",
         "최근 거절 주문",
-        "Paper Engine 상태",
-        "Paper Engine 활성",
-        "Journal 활성",
-        "Persistent 로그 경로",
+        "모의 엔진 상태",
+        "모의 엔진 활성",
+        "거래 기록 활성",
+        "저장 로그 경로",
         "마지막 체결 시각",
         "마지막 거래 시각",
         "KIS 상태",
-        "Dry-run 상태",
+        "모의 반복 상태",
         "최신 리포트 해석",
         "한글 해석",
         "다음 행동 제안",
         "상태 새로고침",
         "모의 주문 실행",
-        "Dry-run 시작",
-        "Tick 1회 실행",
-        "Dry-run 중지",
+        "모의 반복 시작",
+        "한 번 실행",
+        "모의 반복 중지",
         "리포트 분석",
         "최신 리포트 보기",
-        "Overview",
-        "Paper Training",
-        "Agent Research",
-        "Strategy Lab",
-        "Orders / Fills",
-        "Portfolio",
-        "Reports",
-        "Live Validation",
-        "Risk / Ops",
-        "Training 시작",
-        "Agent 분석 실행",
+        "운영 개요",
+        "모의 훈련",
+        "에이전트 리서치",
+        "전략 연구실",
+        "주문·체결",
+        "포트폴리오",
+        "리포트",
+        "실거래 검증",
+        "리스크·운영",
+        "훈련 시작",
+        "에이전트 분석 실행",
     ):
         assert marker in text
 
@@ -153,20 +153,20 @@ def test_dashboard_has_no_external_assets_or_frameworks():
 def test_dashboard_has_live_validation_readiness_section():
     response = TestClient(create_app()).get("/dashboard")
     assert response.status_code == 200
-    assert "Live Validation 준비 상태" in response.text
+    assert "실거래 검증 준비 상태" in response.text
 
 
 def test_dashboard_has_preflight_checklist_section():
     response = TestClient(create_app()).get("/dashboard")
     assert response.status_code == 200
-    assert "Preflight Checklist" in response.text
+    assert "사전 점검 목록" in response.text
 
 
 def test_dashboard_has_live_toggle_and_agent_visual_markers():
     text = _html()
     for marker in (
-        "Live Validation 켜기",
-        "Live Validation 끄기",
+        "실거래 검증 켜기",
+        "실거래 검증 끄기",
         "실전 주문 준비 요청",
         "실전 주문 준비 해제",
         "KIS 인증 확인",
@@ -176,7 +176,7 @@ def test_dashboard_has_live_toggle_and_agent_visual_markers():
         "분석 후보 흐름",
         "매물대·눌림목·큰손 흐름",
         "agent-symbol-chart",
-        "KIS API 모드",
+        "KIS 연결 모드",
         "KIS 연결 해석",
         'id="btn-live-validation-arm"',
         'id="btn-live-validation-disarm"',
@@ -188,8 +188,8 @@ def test_dashboard_has_live_toggle_and_agent_visual_markers():
 def test_dashboard_has_safety_banner_text():
     response = TestClient(create_app()).get("/dashboard")
     assert response.status_code == 200
-    assert "paper / dry-run 전용" in response.text
-    assert "live trading 은 비활성화되어 있으며" in response.text
+    assert "모의거래 / 모의 반복 전용" in response.text
+    assert "실거래는 비활성화되어 있으며" in response.text
 
 
 def test_dashboard_has_no_live_arm_or_enable_buttons():
