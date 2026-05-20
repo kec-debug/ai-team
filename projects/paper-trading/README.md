@@ -380,3 +380,102 @@ KIS Open API의 OAuth 토큰 발급/폐기와 안전 HTTP 래퍼를 제공합니
 - `KIS_API_MODE=live`는 api-auth-001 범위에서 fail-closed (`KisConfigError`).
 - 토큰은 메모리 캐시가 기본. `KIS_TOKEN_CACHE_PATH`를 설정하면 0600 권한 JSON 파일로 캐시 (paper 한정).
 - 본 작업은 시세/주문 호출 본문을 추가하지 않습니다. 후속 job 참고.
+
+## 운영자 가이드 (live-validation-001 준비 상태)
+
+이 섹션은 실제 live trading을 시작하는 절차가 아닙니다. 현재 단계는 paper / dry-run 결과와 안전 설정을 운영자가 한눈에 확인하는 read-only 준비 화면입니다.
+
+### 초보자용 실행 순서
+
+```bash
+cd /root/ai-dev-center/projects/ai-team/projects/paper-trading
+./scripts/start_server.sh
+```
+
+브라우저에서 다음 주소를 엽니다.
+
+```text
+http://127.0.0.1:8000/dashboard
+```
+
+대시보드 상단의 사고 방지 배너, `Live Validation 준비 상태`, `Preflight Checklist`를 먼저 확인합니다.
+
+### Paper simulation 실행
+
+대시보드에서 `예시 모의 주문 실행` 또는 `모의 주문 실행` 버튼을 사용합니다. 이 기능은 내부 PaperBroker와 PaperEngine만 사용하며, 실제 브로커 주문을 전송하지 않습니다.
+
+CLI로 확인하려면 서버 실행 후 다음 endpoint를 사용할 수 있습니다.
+
+```bash
+curl http://127.0.0.1:8000/paper/status
+curl http://127.0.0.1:8000/paper/engine/status
+curl http://127.0.0.1:8000/ops/status
+curl http://127.0.0.1:8000/ops/preflight
+```
+
+### Dry-run 실행
+
+```bash
+./scripts/start_dry_run.sh
+./scripts/tick.sh
+./scripts/analyze.sh
+./scripts/stop_dry_run.sh
+```
+
+대시보드의 `Dry-run 시작`, `Tick 1회 실행`, `리포트 분석`, `최신 리포트 보기` 버튼도 같은 paper-only 검증 흐름을 보조합니다.
+
+### Live validation 전에 반드시 확인할 것
+
+- `trading_mode=paper`
+- `live_trading_enabled=false`
+- `market_orders_allowed=false`
+- `kis_order_dry_run=true`
+- `secret_exposed=false`
+- `kill_switch_engaged=false`
+- KIS config loaded 여부
+- dashboard simulation 가능 여부
+- paper journal 기록 가능 여부
+- report 생성 가능 여부
+- 1일 손실 제한 설정 여부
+- 최대 주문 수 제한 설정 여부
+- 허용 종목 whitelist 설정 여부
+- 최근 테스트 통과 여부 수동 확인
+
+`/ops/preflight`는 위 항목을 read-only checklist로 반환합니다. 이 endpoint는 상태 조회만 하며 live 활성화, dry-run 해제, 시장가 주문 허용, 실제 주문 전송을 수행하지 않습니다.
+
+### Live validation은 아직 실제 실행 단계가 아닙니다
+
+본 시스템은 `live_validation_ready=READY` 가 표시되어도 실제 live 주문을 전송할 코드 경로를 보유하지 않습니다.
+
+실거래 전환 전에는 별도 승인된 future job에서 preflight, arming, whitelist, 소액 제한, kill switch, 운영자 수동 승인, rollback 절차를 다시 검토해야 합니다. 이 저장소의 기본값은 계속 paper trading이며, live trading은 기본 비활성입니다.
+
+---
+
+## 운영 스크립트 명령 정리 (paper-use-ready-001)
+
+매일 paper trading session 운영 명령:
+
+```bash
+cd /root/ai-dev-center/projects/ai-team/projects/paper-trading
+
+./scripts/start_server.sh         # 서버 시작 (foreground)
+./scripts/stop_server.sh          # 서버 정지
+./scripts/restart_server.sh       # 재시작
+./scripts/status.sh               # paper + ops 상태
+./scripts/use_ready_check.sh      # 마스터 점검 (server + smoke + safety + test + git)
+./scripts/safety_grep.sh          # 안전 grep 만
+./scripts/smoke_check.sh          # dry-run 흐름 + paper simulation
+./scripts/start_dry_run.sh        # dry-run 단독 시작
+./scripts/stop_dry_run.sh         # dry-run 단독 중지
+./scripts/tick.sh                 # tick 1 회
+./scripts/analyze.sh              # 리포트 분석
+```
+
+운영 가이드: [docs/RUNBOOK.md](docs/RUNBOOK.md).
+최종 ops 안전 감사: [docs/OPS_AUDIT.md](docs/OPS_AUDIT.md).
+
+### Git 운영 원칙
+
+- `git status --short` 로 dirty 파일 확인.
+- **`git add -A` 사용 금지**. 변경한 파일을 명시적으로 `git add <path>` 로 추가.
+- `git commit / push / merge` 는 본 시스템이 자동화하지 않는다.
