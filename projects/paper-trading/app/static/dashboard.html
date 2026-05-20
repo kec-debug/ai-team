@@ -6,6 +6,10 @@
 <style>
   body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 1120px; margin: 1rem auto; padding: 0 1rem; color: #222; }
   h1 { font-size: 1.5rem; margin-bottom: .25rem; }
+  .banner { padding: .8em 1em; margin-bottom: 1em; border-radius: 6px; font-size: 1em; }
+  .banner-info { background: #e3f2fd; color: #0d47a1; border: 1px solid #90caf9; }
+  .banner-warning { background: #fff3e0; color: #e65100; border: 2px solid #ffb74d; }
+  .banner-danger { background: #ffebee; color: #b71c1c; border: 3px solid #ef5350; font-weight: bold; }
   .safety-banner { background: #fff3f3; border: 1px solid #f3b6b6; color: #8b0000; padding: .65rem .8rem; border-radius: 4px; margin-bottom: 1rem; font-weight: 700; }
   .button-row { display: flex; flex-wrap: wrap; gap: .5rem; margin-bottom: 1rem; }
   .button-row button { padding: .5rem .75rem; border: 1px solid #888; background: #f3f3f3; cursor: pointer; border-radius: 4px; }
@@ -26,9 +30,18 @@
   summary { cursor: pointer; color: #444; }
   .log { color: #555; font-size: .85rem; margin-top: .5rem; }
   .ok { color: #0a7d2c; }
+  .muted { color: #666; font-size: .9em; }
+  .check-pass { color: #2e7d32; }
+  .check-fail { color: #c62828; }
+  #preflight-items { list-style: none; padding: 0; }
+  #preflight-items li { padding: .3em 0; }
 </style>
 </head>
 <body>
+<div id="ops-banner" class="banner banner-info" role="status">
+  <strong id="ops-banner-icon">안내</strong>
+  <span id="ops-banner-text">현재 시스템은 paper / dry-run 전용입니다. live trading 은 비활성화되어 있으며, 실제 주문은 전송되지 않습니다.</span>
+</div>
 <h1>모의거래 대시보드</h1>
 <div class="safety-banner">모의거래 전용 · 실거래 꺼짐 · 실제 주문 불가능 · 실제 브로커 호출 없음</div>
 
@@ -63,6 +76,32 @@
     <tr><th>kis_order_entry_ready</th><td id="kis-order-entry-ready">-</td></tr>
     <tr><th>kis_last_error</th><td id="kis-last-error">-</td></tr>
   </table>
+</section>
+
+<section id="live-validation-readiness">
+  <h2>Live Validation 준비 상태</h2>
+  <p class="muted">아래 상태는 read-only 입니다. live 활성화는 본 화면에서 불가능하며, 별도 절차로만 가능합니다.</p>
+  <table>
+    <tbody>
+      <tr><th>live_trading_enabled</th><td id="lv-live-trading-enabled">-</td></tr>
+      <tr><th>trading_mode</th><td id="lv-trading-mode">-</td></tr>
+      <tr><th>market_orders_allowed</th><td id="lv-market-orders-allowed">-</td></tr>
+      <tr><th>kis_order_dry_run</th><td id="lv-kis-order-dry-run">-</td></tr>
+      <tr><th>kill_switch_engaged</th><td id="lv-kill-switch">-</td></tr>
+      <tr><th>broker_type</th><td id="lv-broker-type">-</td></tr>
+      <tr><th>kis_config_loaded</th><td id="lv-kis-config-loaded">-</td></tr>
+      <tr><th>kis_authenticated</th><td id="lv-kis-authenticated">-</td></tr>
+      <tr><th>kis_market_data_available</th><td id="lv-kis-market-data">-</td></tr>
+      <tr><th>kis_account_loaded</th><td id="lv-kis-account-loaded">-</td></tr>
+      <tr><th>kis_order_entry_ready</th><td id="lv-kis-order-entry-ready">-</td></tr>
+      <tr><th>live_validation_ready</th><td id="lv-validation-ready">-</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section id="preflight-checklist">
+  <h2>Preflight Checklist</h2>
+  <ul id="preflight-items"></ul>
 </section>
 
 <section id="manual-order-section">
@@ -196,6 +235,8 @@ const ENDPOINTS = {
   paperOrderSimulate: "/paper/order/simulate",
   paperEngineStatus: "/paper/engine/status",
   paperReportSummary: "/paper/report/summary",
+  opsStatus: "/ops/status",
+  opsPreflight: "/ops/preflight",
   dryRunStatus: "/paper/dry-run/status",
   dryRunStart: "/paper/dry-run/start",
   dryRunStop: "/paper/dry-run/stop",
@@ -323,6 +364,45 @@ function renderReport(userSummary, raw) {
   setJson("report-content", raw || {});
 }
 
+async function refreshOpsStatus() {
+  try {
+    const ops = await fetchJson(ENDPOINTS.opsPreflight);
+    setText("lv-live-trading-enabled", ops.live_trading_enabled);
+    setText("lv-trading-mode", ops.trading_mode);
+    setText("lv-market-orders-allowed", ops.market_orders_allowed);
+    setText("lv-kis-order-dry-run", ops.kis_order_dry_run);
+    setText("lv-kill-switch", ops.kill_switch_engaged);
+    setText("lv-broker-type", ops.broker_type);
+    setText("lv-kis-config-loaded", ops.kis_config_loaded);
+    setText("lv-kis-authenticated", ops.kis_authenticated);
+    setText("lv-kis-market-data", ops.kis_market_data_available);
+    setText("lv-kis-account-loaded", ops.kis_account_loaded);
+    setText("lv-kis-order-entry-ready", ops.kis_order_entry_ready);
+    setText("lv-validation-ready", ops.live_validation_ready ? "READY" : "NOT READY");
+    const banner = document.getElementById("ops-banner");
+    banner.className = "banner banner-" + ops.banner_level;
+    document.getElementById("ops-banner-icon").textContent =
+      ops.banner_level === "danger" ? "위험" :
+      ops.banner_level === "warning" ? "주의" : "안내";
+    document.getElementById("ops-banner-text").textContent = " " + ops.banner_text_ko;
+    renderChecklist(ops.items || []);
+  } catch (e) {
+    logMsg("ops/preflight error: " + e.message);
+  }
+}
+
+function renderChecklist(items) {
+  const ul = document.getElementById("preflight-items");
+  if (!ul) return;
+  ul.innerHTML = "";
+  for (const item of items || []) {
+    const li = document.createElement("li");
+    li.className = item.passed ? "check-pass" : "check-fail";
+    li.textContent = (item.passed ? "PASS " : "FAIL ") + item.label_ko + " - " + item.detail_ko;
+    ul.appendChild(li);
+  }
+}
+
 async function fetchJson(url, init) {
   const response = await fetch(url, init);
   let body = null;
@@ -335,6 +415,7 @@ async function fetchJson(url, init) {
 }
 
 async function refreshAll() {
+  await refreshOpsStatus();
   try {
     const paper = await fetchJson(ENDPOINTS.paperStatus);
     setText("ps-mode", paper.mode === "paper" ? "모의거래" : paper.mode);

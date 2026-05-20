@@ -36,6 +36,8 @@ class Settings:
     allow_market_orders: bool = False
     allow_paper_market_orders: bool = False
     kill_switch_engaged: bool = False
+    live_validation_daily_loss_limit_usd: Decimal | None = None
+    live_validation_max_orders_per_day: int | None = None
     kis_order_dry_run: bool = True
     dry_run_reports_dir: str = "reports/dry_run"
     dry_run_max_errors_before_auto_stop: int = 10
@@ -71,6 +73,26 @@ def _int_env(name: str, default: int) -> int:
     raw = os.getenv(name)
     if raw is None or raw == "":
         return default
+    try:
+        return int(raw)
+    except ValueError as exc:
+        raise ValueError(f"Invalid integer for {name}") from exc
+
+
+def _optional_decimal_env(name: str) -> Decimal | None:
+    raw = os.getenv(name)
+    if raw is None or raw == "":
+        return None
+    try:
+        return Decimal(raw)
+    except InvalidOperation as exc:
+        raise ValueError(f"Invalid decimal for {name}") from exc
+
+
+def _optional_int_env(name: str) -> int | None:
+    raw = os.getenv(name)
+    if raw is None or raw == "":
+        return None
     try:
         return int(raw)
     except ValueError as exc:
@@ -177,6 +199,12 @@ def load_settings() -> Settings:
         allow_market_orders=False,
         allow_paper_market_orders=_bool_env("ALLOW_PAPER_MARKET_ORDERS", False),
         kill_switch_engaged=_bool_env("KILL_SWITCH_ENGAGED", False),
+        live_validation_daily_loss_limit_usd=_optional_decimal_env(
+            "LIVE_VALIDATION_DAILY_LOSS_LIMIT_USD"
+        ),
+        live_validation_max_orders_per_day=_optional_int_env(
+            "LIVE_VALIDATION_MAX_ORDERS_PER_DAY"
+        ),
         kis_order_dry_run=_bool_env("KIS_ORDER_DRY_RUN", True),
         dry_run_reports_dir=_str_env("DRY_RUN_REPORTS_DIR") or "reports/dry_run",
         dry_run_max_errors_before_auto_stop=_int_env("DRY_RUN_MAX_ERRORS_BEFORE_AUTO_STOP", 10),

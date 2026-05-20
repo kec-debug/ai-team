@@ -12,6 +12,7 @@ from app.domain.enums import OrderType, Session, Side
 from app.domain.market import StrategyInput
 from app.domain.orders import OrderIntent
 from app.domain.quote import Quote
+from app.ops.preflight import LiveValidationStatus, PreflightItem, compute_live_validation_status
 from app.reports.dry_run_analyzer import analyze_run, find_latest_run_dir, write_analysis_files
 from app.runtime.paper_status import (
     build_paper_account_status,
@@ -216,6 +217,64 @@ def paper_engine_status(request: Request) -> dict[str, Any]:
         "safety": _safety_flags(request),
         "secret_exposed": False,
     }
+
+
+def _serialize_preflight_item(item: PreflightItem) -> dict[str, Any]:
+    return {
+        "key": item.key,
+        "label_ko": item.label_ko,
+        "passed": item.passed,
+        "detail_ko": item.detail_ko,
+    }
+
+
+def _serialize_live_validation_status(
+    status: LiveValidationStatus, *, include_checklist: bool
+) -> dict[str, Any]:
+    payload = {
+        "live_trading_enabled": status.live_trading_enabled,
+        "trading_mode": status.trading_mode,
+        "market_orders_allowed": status.market_orders_allowed,
+        "kis_order_dry_run": status.kis_order_dry_run,
+        "kill_switch_engaged": status.kill_switch_engaged,
+        "broker_type": status.broker_type,
+        "kis_config_loaded": status.kis_config_loaded,
+        "kis_authenticated": status.kis_authenticated,
+        "kis_market_data_available": status.kis_market_data_available,
+        "kis_account_loaded": status.kis_account_loaded,
+        "kis_order_entry_ready": status.kis_order_entry_ready,
+        "live_validation_ready": status.live_validation_ready,
+        "banner_level": status.banner_level,
+        "banner_text_ko": status.banner_text_ko,
+        "secret_exposed": False,
+    }
+    if include_checklist:
+        payload["items"] = [_serialize_preflight_item(item) for item in status.items]
+    return payload
+
+
+@router.get("/ops/status")
+def ops_status(request: Request) -> dict[str, Any]:
+    paper_payload = paper_status(request)
+    status = compute_live_validation_status(
+        settings=request.app.state.settings,
+        paper_engine=getattr(request.app.state, "paper_engine", None),
+        kis_broker=getattr(request.app.state, "kis_broker", None),
+        paper_status_payload=paper_payload,
+    )
+    return _serialize_live_validation_status(status, include_checklist=False)
+
+
+@router.get("/ops/preflight")
+def ops_preflight(request: Request) -> dict[str, Any]:
+    paper_payload = paper_status(request)
+    status = compute_live_validation_status(
+        settings=request.app.state.settings,
+        paper_engine=getattr(request.app.state, "paper_engine", None),
+        kis_broker=getattr(request.app.state, "kis_broker", None),
+        paper_status_payload=paper_payload,
+    )
+    return _serialize_live_validation_status(status, include_checklist=True)
 
 
 @router.get("/paper/orders")
