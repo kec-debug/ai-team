@@ -115,16 +115,16 @@ def test_kis_place_cancel_replace_not_implemented(settings):
     broker_no_dry_run = KisBroker(replace(_configured(settings), kis_order_dry_run=False))
     with pytest.raises(KisOrderRejectedError, match="authentication_required"):
         broker_no_dry_run.place_order(_broker_order())
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(KisOrderRejectedError, match="unknown_broker_order_id"):
         broker.cancel_order("x")
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(KisOrderRejectedError, match="unknown_broker_order_id"):
         broker.replace_order("x", _broker_order())
 
 
 def test_kis_protocol_methods_delegate_to_not_implemented(settings):
     broker = KisBroker(_configured(settings))
     assert broker.submit(_broker_order()).status == "dry_run"
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(KisOrderRejectedError, match="unknown_broker_order_id"):
         broker.cancel("x")
     with pytest.raises(NotImplementedError):
         broker.open_orders()

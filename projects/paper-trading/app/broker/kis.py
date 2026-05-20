@@ -7,6 +7,7 @@ confirmed from official KIS Open API documentation.
 """
 
 import json
+import dataclasses
 import socket
 import time
 from collections.abc import Iterator
@@ -64,6 +65,20 @@ KIS_PAPER_ORDER_EXCHANGES = frozenset({"NASD", "NYSE", "AMEX"})
 KIS_PAPER_ORDER_LIMIT_DVSN = "00"
 KIS_PAPER_ORDER_ORD_SVR_DVSN_CD = "0"
 KIS_PAPER_ORDER_SELL_TYPE = "00"
+# docs/kis/MISSING_OFFICIAL_VALUES.md §4.2 / §4.6 (paper US 정정·취소 공용 VTTT1004U only).
+KIS_OVERSEAS_CANCEL_REPLACE_PATH = "/uapi/overseas-stock/v1/trading/order-rvsecncl"
+KIS_PAPER_CANCEL_REPLACE_TR_ID_US = "VTTT1004U"
+KIS_PAPER_CANCEL_REPLACE_TR_IDS = frozenset({KIS_PAPER_CANCEL_REPLACE_TR_ID_US})
+KIS_PAPER_ORDER_ALL_TR_IDS = KIS_PAPER_ORDER_TR_IDS | KIS_PAPER_CANCEL_REPLACE_TR_IDS
+KIS_RVSE_CNCL_DVSN_REPLACE = "01"
+KIS_RVSE_CNCL_DVSN_CANCEL = "02"
+KIS_RVSE_CNCL_DVSN_VALUES = frozenset({KIS_RVSE_CNCL_DVSN_REPLACE, KIS_RVSE_CNCL_DVSN_CANCEL})
+KIS_PAPER_CANCEL_UNPR = "0"
+EXPECTED_PATH_BY_TR_ID: dict[str, str] = {
+    KIS_PAPER_ORDER_TR_ID_US_BUY: KIS_OVERSEAS_ORDER_PATH,
+    KIS_PAPER_ORDER_TR_ID_US_SELL: KIS_OVERSEAS_ORDER_PATH,
+    KIS_PAPER_CANCEL_REPLACE_TR_ID_US: KIS_OVERSEAS_CANCEL_REPLACE_PATH,
+}
 
 
 class KisError(Exception):
@@ -156,6 +171,9 @@ class KisOrderResponse:
     quantity: int
     limit_price: Decimal
     raw_response_sanitized: dict[str, Any]
+    exchange: str = "NASD"
+    replacement_broker_order_id: str | None = None
+    replaces_broker_order_id: str | None = None
 
 
 SENSITIVE_RESPONSE_KEYS = {
@@ -252,6 +270,49 @@ def _build_paper_order_body(
     if request.side is Side.SELL:
         body["SLL_TYPE"] = KIS_PAPER_ORDER_SELL_TYPE
     return body
+
+
+def _build_paper_cancel_body(
+    *,
+    cano: str,
+    acnt_prdt_cd: str,
+    exchange: str,
+    symbol: str,
+    origin_odno: str,
+    original_qty: int,
+) -> dict[str, str]:
+    return {
+        "CANO": cano,
+        "ACNT_PRDT_CD": acnt_prdt_cd,
+        "OVRS_EXCG_CD": exchange,
+        "PDNO": symbol,
+        "ORGN_ODNO": origin_odno,
+        "RVSE_CNCL_DVSN_CD": KIS_RVSE_CNCL_DVSN_CANCEL,
+        "ORD_QTY": str(int(original_qty)),
+        "OVRS_ORD_UNPR": KIS_PAPER_CANCEL_UNPR,
+    }
+
+
+def _build_paper_replace_body(
+    *,
+    cano: str,
+    acnt_prdt_cd: str,
+    exchange: str,
+    symbol: str,
+    origin_odno: str,
+    new_qty: int,
+    new_limit_price: Decimal,
+) -> dict[str, str]:
+    return {
+        "CANO": cano,
+        "ACNT_PRDT_CD": acnt_prdt_cd,
+        "OVRS_EXCG_CD": exchange,
+        "PDNO": symbol,
+        "ORGN_ODNO": origin_odno,
+        "RVSE_CNCL_DVSN_CD": KIS_RVSE_CNCL_DVSN_REPLACE,
+        "ORD_QTY": str(int(new_qty)),
+        "OVRS_ORD_UNPR": format(new_limit_price, "f"),
+    }
 
 
 def _validate_paper_settings(settings: Settings) -> None:
@@ -491,8 +552,9 @@ class KisOrderTransport(Protocol):
         app_secret: str,
         tr_id: str,
         body: dict[str, str],
+        path: str = KIS_OVERSEAS_ORDER_PATH,
     ) -> dict[str, Any]:
-        """Submit a single KIS paper order and return the raw response dict."""
+        """Submit a KIS paper order action and return the raw response dict."""
 
 
 @dataclass(frozen=True)
@@ -506,6 +568,7 @@ class MockOrderTransport:
         app_secret: str,
         tr_id: str,
         body: dict[str, str],
+        path: str = KIS_OVERSEAS_ORDER_PATH,
     ) -> dict[str, Any]:
         raise KisOrderRejectedError("mock_mode_no_network")
 
@@ -525,18 +588,25 @@ class UrllibOrderTransport:
         app_secret: str,
         tr_id: str,
         body: dict[str, str],
+        path: str = KIS_OVERSEAS_ORDER_PATH,
     ) -> dict[str, Any]:
         if _kis_extract_host(base_url) not in KIS_PAPER_ORDER_HOSTS:
             raise KisOrderRejectedError("disallowed_host")
-        if tr_id not in KIS_PAPER_ORDER_TR_IDS:
+        if tr_id not in KIS_PAPER_ORDER_ALL_TR_IDS:
             raise KisOrderRejectedError("disallowed_tr_id")
+        expected_path = EXPECTED_PATH_BY_TR_ID[tr_id]
+        if path != expected_path:
+            raise KisOrderRejectedError("path_tr_id_mismatch")
         exchange = body.get("OVRS_EXCG_CD", "")
         if exchange not in KIS_PAPER_ORDER_EXCHANGES:
             raise KisOrderRejectedError("invalid_exchange")
-        if body.get("ORD_DVSN") != KIS_PAPER_ORDER_LIMIT_DVSN:
-            raise KisOrderRejectedError("ord_dvsn_not_limit")
+        if tr_id in KIS_PAPER_ORDER_TR_IDS:
+            if body.get("ORD_DVSN") != KIS_PAPER_ORDER_LIMIT_DVSN:
+                raise KisOrderRejectedError("ord_dvsn_not_limit")
+        elif body.get("RVSE_CNCL_DVSN_CD") not in KIS_RVSE_CNCL_DVSN_VALUES:
+            raise KisOrderRejectedError("invalid_rvse_cncl_dvsn")
 
-        url = f"{base_url.rstrip('/')}{KIS_OVERSEAS_ORDER_PATH}"
+        url = f"{base_url.rstrip('/')}{path}"
         headers = {
             "content-type": "application/json; charset=utf-8",
             "authorization": f"Bearer {access_token}",
@@ -1102,6 +1172,7 @@ class KisBroker:
                 max_retries=settings.kis_oauth_max_retries,
             )
         self._last_order_response: KisOrderResponse | None = None
+        self._order_history: dict[str, KisOrderResponse] = {}
 
     def __repr__(self) -> str:
         return (
@@ -1190,6 +1261,7 @@ class KisBroker:
                 app_key=self._settings.kis_app_key or "",
                 app_secret=self._settings.kis_app_secret or "",
                 tr_id=tr_id,
+                path=KIS_OVERSEAS_ORDER_PATH,
                 body=body,
             )
         except KisOrderRejectedError as exc:
@@ -1223,8 +1295,11 @@ class KisBroker:
             quantity=broker_order.quantity,
             limit_price=broker_order.limit_price,
             raw_response_sanitized=sanitized,
+            exchange=exchange,
         )
         self._last_order_response = response_record
+        if odno_or_none is not None:
+            self._order_history[odno_or_none] = response_record
         self._last_error = None
         return OrderAck(
             oms_id=broker_order.oms_id,
@@ -1239,13 +1314,185 @@ class KisBroker:
             raise KisOrderRejectedError("market_orders_allowed_flag_set")
         if self._settings.kill_switch_engaged:
             raise KisOrderRejectedError("kill_switch_engaged")
-        self._last_error = "official_kis_cancel_endpoint_required"
-        raise NotImplementedError("KIS cancel_order(): TODO — DO NOT WIRE without OMS-only execution + RiskEngine guard.")
+
+        entry = self._order_history.get(broker_order_id)
+        if entry is None:
+            self._last_error = "unknown_broker_order_id"
+            raise KisOrderRejectedError("unknown_broker_order_id")
+        if entry.status not in ("submitted", "replacement_submitted"):
+            self._last_error = "not_cancellable_state"
+            raise KisOrderRejectedError("not_cancellable_state")
+
+        if self._settings.kis_order_dry_run:
+            self._last_order_preview = self._dry_run_cancel_preview(entry)
+            return None
+
+        if not self._auth.is_authenticated():
+            self._last_error = "authentication_required"
+            raise KisOrderRejectedError("authentication_required")
+        access_token = self._auth.get_access_token()
+        if not access_token:
+            self._last_error = "authentication_required"
+            raise KisOrderRejectedError("authentication_required")
+
+        try:
+            cano, acnt_prdt_cd = _split_kis_account_no(self._settings.kis_account_no or "")
+        except KisConfigError as exc:
+            self._last_error = "invalid_kis_account_no_format"
+            raise KisOrderRejectedError("invalid_kis_account_no_format") from exc
+
+        body = _build_paper_cancel_body(
+            cano=cano,
+            acnt_prdt_cd=acnt_prdt_cd,
+            exchange=entry.exchange,
+            symbol=entry.symbol,
+            origin_odno=broker_order_id,
+            original_qty=entry.quantity,
+        )
+
+        try:
+            raw = self._order_transport.submit_order(
+                base_url=self._settings.kis_base_url_paper,
+                access_token=access_token,
+                app_key=self._settings.kis_app_key or "",
+                app_secret=self._settings.kis_app_secret or "",
+                tr_id=KIS_PAPER_CANCEL_REPLACE_TR_ID_US,
+                path=KIS_OVERSEAS_CANCEL_REPLACE_PATH,
+                body=body,
+            )
+        except KisOrderRejectedError as exc:
+            self._last_error = exc.reason
+            raise
+
+        sanitized = sanitize_kis_response(raw, self._settings)
+        if "rt_cd" not in sanitized:
+            self._last_error = "malformed_response"
+            raise KisOrderRejectedError("malformed_response")
+        if sanitized.get("rt_cd") != "0":
+            code = sanitized.get("msg_cd") or sanitized.get("msg1") or "unknown"
+            self._last_error = f"kis_error:{code}"
+            raise KisOrderRejectedError(f"kis_error:{code}")
+
+        self._order_history[broker_order_id] = dataclasses.replace(
+            entry,
+            status="cancelled",
+            raw_response_sanitized=sanitized,
+        )
+        self._last_error = None
+        return None
 
     def replace_order(self, broker_order_id: str, broker_order: BrokerOrder) -> OrderAck:
         validate_kis_order_request(self._settings, broker_order)
-        self._to_kis_request(broker_order)
-        raise NotImplementedError("KIS replace_order(): TODO — DO NOT WIRE without OMS-only execution + RiskEngine guard.")
+
+        entry = self._order_history.get(broker_order_id)
+        if entry is None:
+            self._last_error = "unknown_broker_order_id"
+            raise KisOrderRejectedError("unknown_broker_order_id")
+        if entry.status not in ("submitted", "replacement_submitted"):
+            self._last_error = "not_replaceable_state"
+            raise KisOrderRejectedError("not_replaceable_state")
+        if broker_order.symbol != entry.symbol:
+            self._last_error = "symbol_mismatch"
+            raise KisOrderRejectedError("symbol_mismatch")
+        if broker_order.side != entry.side:
+            self._last_error = "side_mismatch"
+            raise KisOrderRejectedError("side_mismatch")
+
+        request = self._to_kis_request(broker_order)
+
+        if self._settings.kis_order_dry_run:
+            self._last_order_preview = self._dry_run_replace_preview(entry, request)
+            return OrderAck(
+                oms_id=broker_order.oms_id,
+                broker_order_id=None,
+                status="dry_run",
+                mode=self.mode,
+            )
+
+        if not self._auth.is_authenticated():
+            self._last_error = "authentication_required"
+            raise KisOrderRejectedError("authentication_required")
+        access_token = self._auth.get_access_token()
+        if not access_token:
+            self._last_error = "authentication_required"
+            raise KisOrderRejectedError("authentication_required")
+
+        try:
+            cano, acnt_prdt_cd = _split_kis_account_no(self._settings.kis_account_no or "")
+        except KisConfigError as exc:
+            self._last_error = "invalid_kis_account_no_format"
+            raise KisOrderRejectedError("invalid_kis_account_no_format") from exc
+
+        body = _build_paper_replace_body(
+            cano=cano,
+            acnt_prdt_cd=acnt_prdt_cd,
+            exchange=entry.exchange,
+            symbol=entry.symbol,
+            origin_odno=broker_order_id,
+            new_qty=broker_order.quantity,
+            new_limit_price=broker_order.limit_price,
+        )
+
+        try:
+            raw = self._order_transport.submit_order(
+                base_url=self._settings.kis_base_url_paper,
+                access_token=access_token,
+                app_key=self._settings.kis_app_key or "",
+                app_secret=self._settings.kis_app_secret or "",
+                tr_id=KIS_PAPER_CANCEL_REPLACE_TR_ID_US,
+                path=KIS_OVERSEAS_CANCEL_REPLACE_PATH,
+                body=body,
+            )
+        except KisOrderRejectedError as exc:
+            self._last_error = exc.reason
+            raise
+
+        sanitized = sanitize_kis_response(raw, self._settings)
+        if "rt_cd" not in sanitized:
+            self._last_error = "malformed_response"
+            raise KisOrderRejectedError("malformed_response")
+        if sanitized.get("rt_cd") != "0":
+            code = sanitized.get("msg_cd") or sanitized.get("msg1") or "unknown"
+            self._last_error = f"kis_error:{code}"
+            raise KisOrderRejectedError(f"kis_error:{code}")
+
+        output_raw = sanitized.get("output")
+        output = output_raw if isinstance(output_raw, dict) else {}
+        new_odno_value = output.get("ODNO")
+        new_odno = str(new_odno_value).strip() if new_odno_value is not None else ""
+        if not new_odno:
+            self._last_error = "malformed_response"
+            raise KisOrderRejectedError("malformed_response")
+
+        new_response = KisOrderResponse(
+            internal_order_id=broker_order.oms_id,
+            broker_order_id=new_odno,
+            broker="KisBroker",
+            status="replacement_submitted",
+            submitted_at=datetime.now(timezone.utc),
+            symbol=entry.symbol,
+            side=entry.side,
+            quantity=broker_order.quantity,
+            limit_price=broker_order.limit_price,
+            raw_response_sanitized=sanitized,
+            exchange=entry.exchange,
+            replaces_broker_order_id=broker_order_id,
+        )
+        self._order_history[broker_order_id] = dataclasses.replace(
+            entry,
+            status="replaced",
+            replacement_broker_order_id=new_odno,
+            raw_response_sanitized=sanitized,
+        )
+        self._order_history[new_odno] = new_response
+        self._last_order_response = new_response
+        self._last_error = None
+        return OrderAck(
+            oms_id=broker_order.oms_id,
+            broker_order_id=new_odno,
+            status="replacement_submitted",
+            mode=self.mode,
+        )
 
     def get_fills(self) -> list[OrderAck]:
         raise NotImplementedError(
@@ -1305,6 +1552,55 @@ class KisBroker:
             "account_no": request.account_no_masked,
             "idempotency_key": request.idempotency_key,
             "app_key": self._settings.kis_app_key,
+        }
+        return KisDryRunPreview(
+            request=request,
+            payload_sanitized=sanitize_kis_response(payload, self._settings),
+        )
+
+    def _dry_run_cancel_preview(self, entry: KisOrderResponse) -> KisDryRunPreview:
+        payload = {
+            "operation": "cancel",
+            "broker_order_id": entry.broker_order_id,
+            "symbol": entry.symbol,
+            "exchange": entry.exchange,
+            "quantity": entry.quantity,
+            "tr_id": KIS_PAPER_CANCEL_REPLACE_TR_ID_US,
+            "path": KIS_OVERSEAS_CANCEL_REPLACE_PATH,
+            "account_no": self._account.masked_account_no(),
+        }
+        request = KisOrderRequest(
+            symbol=entry.symbol,
+            market="US",
+            side=entry.side,
+            quantity=entry.quantity,
+            order_type=OrderType.LIMIT,
+            limit_price=entry.limit_price,
+            extended_hours=False,
+            account_no_masked=self._account.masked_account_no(),
+            broker_environment=self._settings.kis_env or "paper",
+            idempotency_key=f"kis-paper-cancel-{entry.broker_order_id}",
+        )
+        return KisDryRunPreview(
+            request=request,
+            payload_sanitized=sanitize_kis_response(payload, self._settings),
+        )
+
+    def _dry_run_replace_preview(
+        self, entry: KisOrderResponse, request: KisOrderRequest
+    ) -> KisDryRunPreview:
+        payload = {
+            "operation": "replace",
+            "broker_order_id": entry.broker_order_id,
+            "symbol": entry.symbol,
+            "exchange": entry.exchange,
+            "old_quantity": entry.quantity,
+            "old_limit_price": str(entry.limit_price),
+            "new_quantity": request.quantity,
+            "new_limit_price": str(request.limit_price),
+            "tr_id": KIS_PAPER_CANCEL_REPLACE_TR_ID_US,
+            "path": KIS_OVERSEAS_CANCEL_REPLACE_PATH,
+            "account_no": self._account.masked_account_no(),
         }
         return KisDryRunPreview(
             request=request,

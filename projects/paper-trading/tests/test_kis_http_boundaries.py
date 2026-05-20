@@ -198,9 +198,9 @@ def test_order_guards_still_reject_unsafe_settings(settings):
 
 def test_cancel_replace_queries_fail_closed(settings):
     broker = KisBroker(_settings(settings))
-    with pytest.raises(NotImplementedError, match="cancel_order"):
+    with pytest.raises(KisOrderRejectedError, match="unknown_broker_order_id"):
         broker.cancel_order("broker-1")
-    with pytest.raises(NotImplementedError, match="replace_order"):
+    with pytest.raises(KisOrderRejectedError, match="unknown_broker_order_id"):
         broker.replace_order("broker-1", _broker_order())
     with pytest.raises(NotImplementedError, match="get_open_orders"):
         broker.get_open_orders()
