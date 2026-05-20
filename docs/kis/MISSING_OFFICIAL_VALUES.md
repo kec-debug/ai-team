@@ -228,6 +228,83 @@ GET `/uapi/overseas-stock/v1/trading/inquire-ccnl` 의 Request Query Parameter �
 
 주문체결내역 Response Body: `rt_cd` / `msg_cd` / `msg1` + `output[]` array (체결/미체결 항목). 본 catalog 는 array 의 sub-field full list 를 보유하지 않으며, 매핑 단계의 별 job 에서 6.xlsx 주문체결내역 sheet 의 sub-field 표를 추가 catalog 화한다. (`<TBD>`)
 
+### 4.7.1 주문체결내역 (`VTTS3035R`) Response `output[]` sub-fields
+
+본 표는 `uploads/6.xlsx` 의 **`해외주식 주문체결내역`** sheet 에서 직접 추출한 응답 sub-field 정의이다. `Confirmed: yes` 행은 6.xlsx 셀 본문에 명시된 값에 한정한다. 모의 제약은 sheet 에 명시된 경우에만 별도 표기한다. 본 catalog 는 paper (`VTTS3035R`) 와 실전 (`TTTS3035R`) 공통 응답을 다루며, 모의 제약은 §4.7 의 request 측 제약과 함께 해석한다.
+
+| Field | Type | 의미 | 모의 제약 | Confirmed |
+| --- | --- | --- | --- | --- |
+| `output[].ord_dt` | string (8) | 주문일자 — 주문접수 일자 (현지시각 기준) | — | yes |
+| `output[].ord_gno_brno` | string (5) | 주문채번지점번호 — 계좌 개설 시 관리점으로 선택한 영업점의 고유번호 | — | yes |
+| `output[].odno` | string (10) | 주문번호 — 접수한 주문의 일련번호. 정정취소주문 시 해당 값 `odno` 사용 | — | yes |
+| `output[].orgn_odno` | string (10) | 원주문번호 — 정정 또는 취소 대상 주문의 일련번호 | — | yes |
+| `output[].sll_buy_dvsn_cd` | string (2) | 매도매수구분코드 — `01`=매도, `02`=매수 | — | yes |
+| `output[].sll_buy_dvsn_cd_name` | string (60) | 매도매수구분코드명 | — | yes |
+| `output[].rvse_cncl_dvsn` | string (2) | 정정취소구분 — `01`=정정, `02`=취소 | — | yes |
+| `output[].rvse_cncl_dvsn_name` | string (60) | 정정취소구분명 | — | yes |
+| `output[].pdno` | string (12) | 상품번호 | — | yes |
+| `output[].prdt_name` | string (60) | 상품명 | — | yes |
+| `output[].ft_ord_qty` | string (10) | FT주문수량 — 주문수량 | — | yes |
+| `output[].ft_ord_unpr3` | string (26) | FT주문단가3 — 주문가격 | — | yes |
+| `output[].ft_ccld_qty` | string (10) | FT체결수량 — 체결된 수량 | — | yes |
+| `output[].ft_ccld_unpr3` | string (26) | FT체결단가3 — 체결된 가격 | — | yes |
+| `output[].ft_ccld_amt3` | string (23) | FT체결금액3 — 체결된 금액 | — | yes |
+| `output[].nccs_qty` | string (10) | 미체결수량 | — | yes |
+| `output[].prcs_stat_name` | string (60) | 처리상태명 — 완료, 거부, 전송 | — | yes |
+| `output[].rjct_rson` | string (60) | 거부사유 — 정상 처리되지 못하고 거부된 주문의 사유 | — | yes |
+| `output[].rjct_rson_name` | string (60) | 거부사유명 | — | yes |
+| `output[].ord_tmd` | string (6) | 주문시각 — 주문 접수 시간 | — | yes |
+| `output[].tr_mket_name` | string (60) | 거래시장명 | — | yes |
+| `output[].tr_natn` | string (3) | 거래국가 | — | yes |
+| `output[].tr_natn_name` | string (3) | 거래국가명 | — | yes |
+| `output[].ovrs_excg_cd` | string (4) | 해외거래소코드 — `NASD` 나스닥 / `NYSE` 뉴욕 / `AMEX` 아멕스 / `SEHK` 홍콩 / `SHAA` 중국상해 / `SZAA` 중국심천 / `TKSE` 일본 / `HASE` 베트남 하노이 / `VNSE` 베트남 호치민 | — | yes |
+| `output[].tr_crcy_cd` | string (60) | 거래통화코드 | — | yes |
+| `output[].dmst_ord_dt` | string (8) | 국내주문일자 | — | yes |
+| `output[].thco_ord_tmd` | string (6) | 당사주문시각 | — | yes |
+| `output[].loan_type_cd` | string (2) | 대출유형코드 — `00` 해당사항없음 등 sheet 본문 값 | — | yes |
+| `output[].loan_dt` | string (8) | 대출일자 | — | yes |
+| `output[].mdia_dvsn_name` | string (60) | 매체구분명 — 예: OpenAPI, 모바일 | — | yes |
+| `output[].usa_amk_exts_rqst_yn` | string (1) | 미국애프터마켓연장신청여부 — Y/N | — | yes |
+| `output[].splt_buy_attr_name` | string (60) | 분할매수/매도속성명 — 정규장 종료 주문 시에는 정규장 종료, 시간 입력 시에는 from~to 시간 표시 | — | yes |
+
+본 sub-field 표는 주문번호(`odno`), 종목(`pdno`), 매수/매도(`sll_buy_dvsn_cd`), 주문수량(`ft_ord_qty`), 체결수량(`ft_ccld_qty`), 미체결수량(`nccs_qty`), 주문가격(`ft_ord_unpr3`), 체결가격(`ft_ccld_unpr3`), 처리상태명(`prcs_stat_name`), 주문시각(`ord_tmd`) 매핑에 필요한 field name 을 제공한다. 단, 모의 request 제약상 `CCLD_NCCS_DVSN="00"` 전체 조회만 가능하고 `ODNO` 단건 검색은 불가하므로, paper 구현은 전체 조회 후 client-side filtering 이 필요하다.
+
+### 4.7.2 미체결내역 (`TTTS3018R`) Response `output[]` sub-fields (실전 only — 모의 미지원)
+
+본 표는 `uploads/6.xlsx` 의 **`해외주식 미체결내역`** sheet 에서 추출한 미체결내역 응답 sub-field 정의이다. **§4.8 에 명시된 대로 모의투자에서 사용 불가하며, 본 저장소의 `KisBroker.get_open_orders()` 는 paper 환경에서 이 endpoint 를 호출하지 않는다**. 실전 라이브 확장의 완전성을 위해 catalog 화만 한다.
+
+| Field | Type | 의미 | Confirmed |
+| --- | --- | --- | --- |
+| `output[].ord_dt` | string (8) | 주문일자 — 주문접수 일자 | yes |
+| `output[].ord_gno_brno` | string (5) | 주문채번지점번호 — 계좌 개설 시 관리점으로 선택한 영업점의 고유번호 | yes |
+| `output[].odno` | string (10) | 주문번호 — 접수한 주문의 일련번호 | yes |
+| `output[].orgn_odno` | string (10) | 원주문번호 — 정정 또는 취소 대상 주문의 일련번호 | yes |
+| `output[].pdno` | string (12) | 상품번호 — 종목코드 | yes |
+| `output[].prdt_name` | string (60) | 상품명 — 종목명 | yes |
+| `output[].sll_buy_dvsn_cd` | string (2) | 매도매수구분코드 — `01`=매도, `02`=매수 | yes |
+| `output[].sll_buy_dvsn_cd_name` | string (60) | 매도매수구분코드명 — 매수매도구분명 | yes |
+| `output[].rvse_cncl_dvsn_cd` | string (2) | 정정취소구분코드 — `01`=정정, `02`=취소 | yes |
+| `output[].rvse_cncl_dvsn_cd_name` | string (60) | 정정취소구분코드명 — 정정취소구분명 | yes |
+| `output[].rjct_rson` | string (60) | 거부사유 — 정상 처리되지 못하고 거부된 주문의 사유 | yes |
+| `output[].rjct_rson_name` | string (60) | 거부사유명 — 정상 처리되지 못하고 거부된 주문의 사유명 | yes |
+| `output[].ord_tmd` | string (6) | 주문시각 — 주문 접수 시간 | yes |
+| `output[].tr_mket_name` | string (60) | 거래시장명 | yes |
+| `output[].tr_crcy_cd` | string (3) | 거래통화코드 — `USD` 미국달러 / `HKD` 홍콩달러 / `CNY` 중국위안화 / `JPY` 일본엔화 / `VND` 베트남동 | yes |
+| `output[].natn_cd` | string (3) | 국가코드 | yes |
+| `output[].natn_kor_name` | string (60) | 국가한글명 | yes |
+| `output[].ft_ord_qty` | string (10) | FT주문수량 — 주문수량 | yes |
+| `output[].ft_ccld_qty` | string (10) | FT체결수량 — 체결된 수량 | yes |
+| `output[].nccs_qty` | string (10) | 미체결수량 | yes |
+| `output[].ft_ord_unpr3` | string (26) | FT주문단가3 — 주문가격 | yes |
+| `output[].ft_ccld_unpr3` | string (26) | FT체결단가3 — 체결된 가격 | yes |
+| `output[].ft_ccld_amt3` | string (23) | FT체결금액3 — 체결된 금액 | yes |
+| `output[].ovrs_excg_cd` | string (4) | 해외거래소코드 — `NASD` 나스닥 / `NYSE` 뉴욕 / `AMEX` 아멕스 / `SEHK` 홍콩 / `SHAA` 중국상해 / `SZAA` 중국심천 / `TKSE` 일본 / `HASE` 베트남 하노이 / `VNSE` 베트남 호치민 | yes |
+| `output[].prcs_stat_name` | string (60) | 처리상태명 | yes |
+| `output[].loan_type_cd` | string (2) | 대출유형코드 — `00` 해당사항없음 등 sheet 본문 값 | yes |
+| `output[].loan_dt` | string (8) | 대출일자 — 대출 실행일자 | yes |
+| `output[].usa_amk_exts_rqst_yn` | string (1) | 미국애프터마켓연장신청여부 — Y/N | yes |
+| `output[].splt_buy_attr_name` | string (60) | 분할매수속성명 — 정규장 종료 주문 시에는 정규장 종료, 시간 입력 시에는 from~to 시간 표시 | yes |
+
 ### 4.8 모의투자 미지원 endpoint 목록
 
 다음 endpoint 들은 6.xlsx API 목록 sheet 에서 **"모의투자 미지원"** 으로 명시되어 있다. 본 저장소의 `KisBroker` 는 이 endpoint 들에 대해 `NotImplementedError` 를 raise 유지한다.
