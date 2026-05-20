@@ -126,7 +126,7 @@ def test_kis_protocol_methods_delegate_to_not_implemented(settings):
     assert broker.submit(_broker_order()).status == "dry_run"
     with pytest.raises(KisOrderRejectedError, match="unknown_broker_order_id"):
         broker.cancel("x")
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(KisOrderRejectedError, match="authentication_required"):
         broker.open_orders()
     with pytest.raises(KisAuthError, match="authentication required"):
         broker.positions()
@@ -137,11 +137,11 @@ def test_kis_data_methods_not_implemented(settings):
     for method in ("authenticate", "refresh_token"):
         with pytest.raises(KisAuthError, match="mock_mode_no_network"):
             getattr(broker, method)()
-    for method, args in (("get_open_orders", ()),):
-        with pytest.raises(NotImplementedError, match="TODO"):
-            getattr(broker, method)(*args)
     for method, args in (("get_account", ()), ("get_positions", ()), ("get_quote", ("AAPL",))):
         with pytest.raises(KisAuthError, match="authentication required"):
+            getattr(broker, method)(*args)
+    for method, args in (("get_open_orders", ()), ("get_fills", ()), ("get_order_status", ("oms-1",))):
+        with pytest.raises(KisOrderRejectedError, match="authentication_required"):
             getattr(broker, method)(*args)
 
 
@@ -149,9 +149,9 @@ def test_kis_broker_has_get_fills_and_get_order_status(settings):
     broker = KisBroker(_configured(settings))
     assert callable(broker.get_fills)
     assert callable(broker.get_order_status)
-    with pytest.raises(NotImplementedError, match="TODO"):
+    with pytest.raises(KisOrderRejectedError, match="authentication_required"):
         broker.get_fills()
-    with pytest.raises(NotImplementedError, match="TODO"):
+    with pytest.raises(KisOrderRejectedError, match="authentication_required"):
         broker.get_order_status("oms-1")
 
 

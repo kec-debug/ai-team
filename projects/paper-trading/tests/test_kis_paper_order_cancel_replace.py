@@ -630,21 +630,21 @@ def test_healthcheck_order_execution_implemented_remains_false(settings):
     assert health["order_methods_fail_closed"] is True
 
 
-def test_get_open_orders_still_not_implemented_after_cancel_replace(settings):
+def test_get_open_orders_requires_auth_after_query_unblocked(settings):
     broker = KisBroker(_settings(settings))
-    with pytest.raises(NotImplementedError, match="get_open_orders"):
+    with pytest.raises(KisOrderRejectedError, match="authentication_required"):
         broker.get_open_orders()
 
 
-def test_get_fills_still_not_implemented_after_cancel_replace(settings):
+def test_get_fills_requires_auth_after_query_unblocked(settings):
     broker = KisBroker(_settings(settings))
-    with pytest.raises(NotImplementedError, match="get_fills"):
+    with pytest.raises(KisOrderRejectedError, match="authentication_required"):
         broker.get_fills()
 
 
-def test_get_order_status_still_not_implemented_after_cancel_replace(settings):
+def test_get_order_status_requires_auth_after_query_unblocked(settings):
     broker = KisBroker(_settings(settings))
-    with pytest.raises(NotImplementedError, match="get_order_status"):
+    with pytest.raises(KisOrderRejectedError, match="authentication_required"):
         broker.get_order_status("any-id")
 
 

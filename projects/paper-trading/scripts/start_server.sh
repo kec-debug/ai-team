@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+HOST="${HOST:-127.0.0.1}"
+PORT="${PORT:-8000}"
+
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck disable=SC1091
 . "$SCRIPT_DIR/_common.sh"
@@ -10,4 +13,4 @@ cd "$PROJECT_DIR"
 
 print_banner
 echo "[start_server] starting uvicorn on 127.0.0.1:$PORT"
-exec .venv/bin/uvicorn app.api.server:app --host 127.0.0.1 --port "$PORT"
+exec .venv/bin/uvicorn app.api.server:app --host "$HOST" --port "$PORT"

@@ -79,6 +79,15 @@ EXPECTED_PATH_BY_TR_ID: dict[str, str] = {
     KIS_PAPER_ORDER_TR_ID_US_SELL: KIS_OVERSEAS_ORDER_PATH,
     KIS_PAPER_CANCEL_REPLACE_TR_ID_US: KIS_OVERSEAS_CANCEL_REPLACE_PATH,
 }
+# docs/kis/MISSING_OFFICIAL_VALUES.md §4.2 / §4.7 / §4.7.1 (paper VTTS3035R only, paper US exchanges).
+KIS_OVERSEAS_CCNL_PATH = "/uapi/overseas-stock/v1/trading/inquire-ccnl"
+KIS_PAPER_CCNL_TR_ID = "VTTS3035R"
+KIS_PAPER_QUERY_HOSTS = frozenset({"openapivts.koreainvestment.com:29443"})
+KIS_PAPER_QUERY_EXCHANGES = frozenset({"NASD", "NYSE", "AMEX"})
+KIS_PAPER_QUERY_SLL_BUY_DVSN = "00"
+KIS_PAPER_QUERY_CCLD_NCCS_DVSN = "00"
+KIS_PAPER_QUERY_SORT_SQN = "DS"
+KIS_QUERY_MAX_PAGES = 10
 
 
 class KisError(Exception):
@@ -502,6 +511,159 @@ class UrllibAccountTransport:
             f"{base_url.rstrip('/')}{KIS_OVERSEAS_BALANCE_PATH}"
             f"?CANO={urlquote(cano)}&ACNT_PRDT_CD={urlquote(acnt_prdt_cd)}"
             f"&OVRS_EXCG_CD={urlquote(ovrs_excg_cd)}&TR_CRCY_CD={urlquote(tr_crcy_cd)}"
+            f"&CTX_AREA_FK200={urlquote(ctx_area_fk200)}"
+            f"&CTX_AREA_NK200={urlquote(ctx_area_nk200)}"
+        )
+        headers = {
+            "content-type": "application/json; charset=utf-8",
+            "authorization": f"Bearer {access_token}",
+            "appkey": app_key,
+            "appsecret": app_secret,
+            "tr_id": tr_id,
+            "tr_cont": tr_cont,
+        }
+        request = Request(url=url, data=None, headers=headers, method="GET")
+        attempts = max(1, self.max_retries + 1)
+        for attempt in range(attempts):
+            try:
+                with urlopen(request, timeout=self.timeout_seconds) as response:
+                    body = response.read().decode("utf-8")
+                parsed = json.loads(body)
+                if not isinstance(parsed, dict):
+                    raise KisDataUnavailableError("invalid_response_body")
+                rt_cd = parsed.get("rt_cd")
+                if rt_cd not in (None, "0"):
+                    code = parsed.get("msg_cd") or parsed.get("msg1") or "unknown"
+                    raise KisDataUnavailableError(f"kis_error:{code}")
+                return parsed
+            except HTTPError as exc:
+                if exc.code >= 500 and attempt < attempts - 1:
+                    time.sleep(self.backoff_seconds)
+                    continue
+                raise KisDataUnavailableError(f"http_{exc.code}") from exc
+            except (URLError, TimeoutError, socket.timeout) as exc:
+                if attempt < attempts - 1:
+                    time.sleep(self.backoff_seconds)
+                    continue
+                raise KisDataUnavailableError("transport_error") from exc
+            except json.JSONDecodeError as exc:
+                raise KisDataUnavailableError("invalid_response_body") from exc
+        raise KisDataUnavailableError("transport_error")
+
+
+class KisQueryTransport(Protocol):
+    def get_ccnl(
+        self,
+        *,
+        base_url: str,
+        access_token: str,
+        app_key: str,
+        app_secret: str,
+        tr_id: str,
+        cano: str,
+        acnt_prdt_cd: str,
+        pdno: str,
+        ord_strt_dt: str,
+        ord_end_dt: str,
+        sll_buy_dvsn: str,
+        ccld_nccs_dvsn: str,
+        ovrs_excg_cd: str,
+        sort_sqn: str,
+        ord_dt: str,
+        ord_gno_brno: str,
+        odno: str,
+        ctx_area_fk200: str,
+        ctx_area_nk200: str,
+        tr_cont: str,
+    ) -> dict[str, Any]:
+        """Return one page of the KIS overseas inquire-ccnl response (raw)."""
+
+
+@dataclass(frozen=True)
+class MockQueryTransport:
+    def get_ccnl(
+        self,
+        *,
+        base_url: str,
+        access_token: str,
+        app_key: str,
+        app_secret: str,
+        tr_id: str,
+        cano: str,
+        acnt_prdt_cd: str,
+        pdno: str,
+        ord_strt_dt: str,
+        ord_end_dt: str,
+        sll_buy_dvsn: str,
+        ccld_nccs_dvsn: str,
+        ovrs_excg_cd: str,
+        sort_sqn: str,
+        ord_dt: str,
+        ord_gno_brno: str,
+        odno: str,
+        ctx_area_fk200: str,
+        ctx_area_nk200: str,
+        tr_cont: str,
+    ) -> dict[str, Any]:
+        raise KisDataUnavailableError("mock_mode_no_network")
+
+
+@dataclass(frozen=True)
+class UrllibQueryTransport:
+    timeout_seconds: float = 5.0
+    max_retries: int = 1
+    backoff_seconds: float = 2.0
+
+    def get_ccnl(
+        self,
+        *,
+        base_url: str,
+        access_token: str,
+        app_key: str,
+        app_secret: str,
+        tr_id: str,
+        cano: str,
+        acnt_prdt_cd: str,
+        pdno: str,
+        ord_strt_dt: str,
+        ord_end_dt: str,
+        sll_buy_dvsn: str,
+        ccld_nccs_dvsn: str,
+        ovrs_excg_cd: str,
+        sort_sqn: str,
+        ord_dt: str,
+        ord_gno_brno: str,
+        odno: str,
+        ctx_area_fk200: str,
+        ctx_area_nk200: str,
+        tr_cont: str,
+    ) -> dict[str, Any]:
+        if _kis_extract_host(base_url) not in KIS_PAPER_QUERY_HOSTS:
+            raise KisDataUnavailableError("disallowed_host")
+        if tr_id != KIS_PAPER_CCNL_TR_ID:
+            raise KisDataUnavailableError("disallowed_tr_id")
+        if ovrs_excg_cd not in KIS_PAPER_QUERY_EXCHANGES:
+            raise KisDataUnavailableError("invalid_exchange")
+        if pdno != "":
+            raise KisDataUnavailableError("paper_pdno_must_be_empty")
+        if sll_buy_dvsn != KIS_PAPER_QUERY_SLL_BUY_DVSN:
+            raise KisDataUnavailableError("paper_sll_buy_dvsn_must_be_00")
+        if ccld_nccs_dvsn != KIS_PAPER_QUERY_CCLD_NCCS_DVSN:
+            raise KisDataUnavailableError("paper_ccld_nccs_dvsn_must_be_00")
+        if sort_sqn != KIS_PAPER_QUERY_SORT_SQN:
+            raise KisDataUnavailableError("paper_sort_sqn_must_be_ds")
+        if ord_dt != "" or ord_gno_brno != "" or odno != "":
+            raise KisDataUnavailableError("paper_odno_search_not_allowed")
+
+        url = (
+            f"{base_url.rstrip('/')}{KIS_OVERSEAS_CCNL_PATH}"
+            f"?CANO={urlquote(cano)}&ACNT_PRDT_CD={urlquote(acnt_prdt_cd)}"
+            f"&PDNO={urlquote(pdno)}"
+            f"&ORD_STRT_DT={urlquote(ord_strt_dt)}&ORD_END_DT={urlquote(ord_end_dt)}"
+            f"&SLL_BUY_DVSN={urlquote(sll_buy_dvsn)}&CCLD_NCCS_DVSN={urlquote(ccld_nccs_dvsn)}"
+            f"&OVRS_EXCG_CD={urlquote(ovrs_excg_cd)}&SORT_SQN={urlquote(sort_sqn)}"
+            f"&ORD_DT={urlquote(ord_dt)}&ORD_GNO_BRNO={urlquote(ord_gno_brno)}"
+            f"&ODNO={urlquote(odno)}"
             f"&CTX_AREA_FK200={urlquote(ctx_area_fk200)}"
             f"&CTX_AREA_NK200={urlquote(ctx_area_nk200)}"
         )
@@ -1173,6 +1335,13 @@ class KisBroker:
             )
         self._last_order_response: KisOrderResponse | None = None
         self._order_history: dict[str, KisOrderResponse] = {}
+        if mode is KisApiMode.MOCK:
+            self._query_transport: KisQueryTransport = MockQueryTransport()
+        else:
+            self._query_transport = UrllibQueryTransport(
+                timeout_seconds=settings.kis_oauth_timeout_seconds,
+                max_retries=settings.kis_oauth_max_retries,
+            )
 
     def __repr__(self) -> str:
         return (
@@ -1212,11 +1381,86 @@ class KisBroker:
     def get_quote(self, symbol: str) -> Quote:
         return self._market_data.get_quote(symbol)
 
-    def get_open_orders(self) -> list[OrderAck]:
-        raise NotImplementedError(
-            "KIS get_open_orders(): TODO — confirm open-orders endpoint, TR ID, payload, and response shape "
-            "from KIS Open API official documentation. Do not invent endpoints."
+    def get_open_orders(
+        self,
+        *,
+        ord_strt_dt: str | None = None,
+        ord_end_dt: str | None = None,
+        exchange: str = "NASD",
+    ) -> list[OrderAck]:
+        """Return paper open orders by filtering inquire-ccnl rows where nccs_qty > 0.
+
+        Paper has no native `/inquire-nccs`; this uses the paper-supported
+        `/inquire-ccnl` (VTTS3035R) full-period query + client-side filter.
+        """
+        rows = self._fetch_ccnl_rows(
+            ord_strt_dt=ord_strt_dt, ord_end_dt=ord_end_dt, exchange=exchange,
         )
+        results: list[OrderAck] = []
+        for row in rows:
+            if _int_from(row.get("nccs_qty")) <= 0:
+                continue
+            odno = str(row.get("odno") or "").strip() or None
+            results.append(
+                OrderAck(
+                    oms_id="",
+                    broker_order_id=odno,
+                    status=str(row.get("prcs_stat_name") or "open"),
+                    mode=self.mode,
+                )
+            )
+        self._last_open_orders_rows = list(rows)
+        return results
+
+    def get_fills(
+        self,
+        *,
+        ord_strt_dt: str | None = None,
+        ord_end_dt: str | None = None,
+        exchange: str = "NASD",
+    ) -> list[OrderAck]:
+        """Return paper fills by filtering inquire-ccnl rows where ft_ccld_qty > 0."""
+        rows = self._fetch_ccnl_rows(
+            ord_strt_dt=ord_strt_dt, ord_end_dt=ord_end_dt, exchange=exchange,
+        )
+        results: list[OrderAck] = []
+        for row in rows:
+            if _int_from(row.get("ft_ccld_qty")) <= 0:
+                continue
+            odno = str(row.get("odno") or "").strip() or None
+            results.append(
+                OrderAck(
+                    oms_id="",
+                    broker_order_id=odno,
+                    status=str(row.get("prcs_stat_name") or "filled"),
+                    mode=self.mode,
+                )
+            )
+        self._last_fills_rows = list(rows)
+        return results
+
+    def get_order_status(
+        self,
+        broker_order_id: str,
+        *,
+        ord_strt_dt: str | None = None,
+        ord_end_dt: str | None = None,
+        exchange: str = "NASD",
+    ) -> dict[str, Any]:
+        """Return paper order status by fetching inquire-ccnl + client-side ODNO lookup."""
+        if not broker_order_id or not broker_order_id.strip():
+            self._last_error = "unknown_broker_order_id"
+            raise KisOrderRejectedError("unknown_broker_order_id")
+        target = broker_order_id.strip()
+        rows = self._fetch_ccnl_rows(
+            ord_strt_dt=ord_strt_dt, ord_end_dt=ord_end_dt, exchange=exchange,
+        )
+        for row in rows:
+            if str(row.get("odno") or "").strip() == target:
+                self._last_error = None
+                return dict(row)
+        self._last_error = "unknown_broker_order_id"
+        raise KisOrderRejectedError("unknown_broker_order_id")
 
     def place_order(self, broker_order: BrokerOrder) -> OrderAck:
         validate_kis_order_request(self._settings, broker_order)
@@ -1494,17 +1738,92 @@ class KisBroker:
             mode=self.mode,
         )
 
-    def get_fills(self) -> list[OrderAck]:
-        raise NotImplementedError(
-            "KIS get_fills(): TODO — confirm fills endpoint, TR ID, payload, and response shape "
-            "from KIS Open API official documentation. Do not invent endpoints."
-        )
+    def _fetch_ccnl_rows(
+        self,
+        *,
+        ord_strt_dt: str | None,
+        ord_end_dt: str | None,
+        exchange: str,
+    ) -> list[dict[str, Any]]:
+        """Paginate the paper inquire-ccnl endpoint and return sanitized output[] rows.
 
-    def get_order_status(self, broker_order_id: str) -> dict[str, Any]:
-        raise NotImplementedError(
-            "KIS get_order_status(): TODO — confirm order status endpoint, TR ID, payload, and response shape "
-            "from KIS Open API official documentation. Do not invent endpoints."
-        )
+        Enforces paper constraints (PDNO/SLL_BUY_DVSN/CCLD_NCCS_DVSN/SORT_SQN/ODNO).
+        """
+        if not self._auth.is_authenticated():
+            self._last_error = "authentication_required"
+            raise KisOrderRejectedError("authentication_required")
+        access_token = self._auth.get_access_token()
+        if not access_token:
+            self._last_error = "authentication_required"
+            raise KisOrderRejectedError("authentication_required")
+
+        try:
+            cano, acnt_prdt_cd = _split_kis_account_no(self._settings.kis_account_no or "")
+        except KisConfigError as exc:
+            self._last_error = "invalid_kis_account_no_format"
+            raise KisOrderRejectedError("invalid_kis_account_no_format") from exc
+
+        if exchange not in KIS_PAPER_QUERY_EXCHANGES:
+            self._last_error = "invalid_exchange"
+            raise KisOrderRejectedError("invalid_exchange")
+
+        today = datetime.now(timezone.utc).strftime("%Y%m%d")
+        ord_strt_dt = ord_strt_dt or today
+        ord_end_dt = ord_end_dt or today
+
+        ctx_fk = ""
+        ctx_nk = ""
+        tr_cont = ""
+        all_rows: list[dict[str, Any]] = []
+        for _ in range(KIS_QUERY_MAX_PAGES):
+            try:
+                raw = self._query_transport.get_ccnl(
+                    base_url=self._settings.kis_base_url_paper,
+                    access_token=access_token,
+                    app_key=self._settings.kis_app_key or "",
+                    app_secret=self._settings.kis_app_secret or "",
+                    tr_id=KIS_PAPER_CCNL_TR_ID,
+                    cano=cano,
+                    acnt_prdt_cd=acnt_prdt_cd,
+                    pdno="",
+                    ord_strt_dt=ord_strt_dt,
+                    ord_end_dt=ord_end_dt,
+                    sll_buy_dvsn=KIS_PAPER_QUERY_SLL_BUY_DVSN,
+                    ccld_nccs_dvsn=KIS_PAPER_QUERY_CCLD_NCCS_DVSN,
+                    ovrs_excg_cd=exchange,
+                    sort_sqn=KIS_PAPER_QUERY_SORT_SQN,
+                    ord_dt="",
+                    ord_gno_brno="",
+                    odno="",
+                    ctx_area_fk200=ctx_fk,
+                    ctx_area_nk200=ctx_nk,
+                    tr_cont=tr_cont,
+                )
+            except KisDataUnavailableError as exc:
+                self._last_error = str(exc)
+                raise KisOrderRejectedError(str(exc)) from exc
+
+            sanitized = sanitize_kis_response(raw, self._settings)
+            if "rt_cd" not in sanitized:
+                self._last_error = "malformed_response"
+                raise KisOrderRejectedError("malformed_response")
+            if sanitized.get("rt_cd") != "0":
+                code = sanitized.get("msg_cd") or sanitized.get("msg1") or "unknown"
+                self._last_error = f"kis_error:{code}"
+                raise KisOrderRejectedError(f"kis_error:{code}")
+            rows = sanitized.get("output") or []
+            if isinstance(rows, list):
+                all_rows.extend(r for r in rows if isinstance(r, dict))
+            next_fk = str(sanitized.get("ctx_area_fk200") or "").strip()
+            next_nk = str(sanitized.get("ctx_area_nk200") or "").strip()
+            if not next_fk and not next_nk:
+                self._last_error = None
+                return all_rows
+            ctx_fk = next_fk
+            ctx_nk = next_nk
+            tr_cont = "N"
+        self._last_error = "query_pagination_cap_exceeded"
+        raise KisOrderRejectedError("query_pagination_cap_exceeded")
 
     def capabilities(self) -> dict[str, bool]:
         return {

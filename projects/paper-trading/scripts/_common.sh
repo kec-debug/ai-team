@@ -10,6 +10,7 @@ export TRADING_MODE=paper
 export LIVE_TRADING_ENABLED=false
 export ALLOW_MARKET_ORDERS=false
 export KIS_ORDER_DRY_RUN=true
+export SYMBOL_ALLOWLIST="${SYMBOL_ALLOWLIST:-}"
 
 BASE_URL="${BASE_URL:-http://127.0.0.1:8000}"
 PORT="${PORT:-8000}"

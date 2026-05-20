@@ -202,11 +202,11 @@ def test_cancel_replace_queries_fail_closed(settings):
         broker.cancel_order("broker-1")
     with pytest.raises(KisOrderRejectedError, match="unknown_broker_order_id"):
         broker.replace_order("broker-1", _broker_order())
-    with pytest.raises(NotImplementedError, match="get_open_orders"):
+    with pytest.raises(KisOrderRejectedError, match="authentication_required"):
         broker.get_open_orders()
-    with pytest.raises(NotImplementedError, match="get_fills"):
+    with pytest.raises(KisOrderRejectedError, match="authentication_required"):
         broker.get_fills()
-    with pytest.raises(NotImplementedError, match="get_order_status"):
+    with pytest.raises(KisOrderRejectedError, match="authentication_required"):
         broker.get_order_status("broker-1")
 
 

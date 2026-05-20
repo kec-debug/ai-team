@@ -19,6 +19,9 @@ class PaperBroker:
         max_fill_ratio_of_volume: Decimal = Decimal("0.05"),
         commission_per_share: Decimal = Decimal("0"),
         commission_per_fill: Decimal = Decimal("0"),
+        slippage_bps: Decimal = Decimal("0"),
+        market_impact_bps_per_pct_volume: Decimal = Decimal("0"),
+        max_spread_pct_for_fill: Decimal = Decimal("0"),
     ) -> None:
         self._open_orders: dict[str, BrokerOrder] = {}
         self._positions: dict[str, int] = {}
@@ -27,6 +30,9 @@ class PaperBroker:
         self._max_fill_ratio_of_volume = max_fill_ratio_of_volume
         self._commission_per_share = commission_per_share
         self._commission_per_fill = commission_per_fill
+        self._slippage_bps = Decimal(slippage_bps)
+        self._market_impact_bps_per_pct_volume = Decimal(market_impact_bps_per_pct_volume)
+        self._max_spread_pct_for_fill = Decimal(max_spread_pct_for_fill)
 
     def submit(self, order: BrokerOrder) -> OrderAck:
         if order.order_type not in (OrderType.LIMIT, OrderType.STOP_LIMIT, OrderType.MARKET):
@@ -60,6 +66,8 @@ class PaperBroker:
             return []
         if quote.session is not None and quote.session not in self._allowed_sessions:
             return []
+        if self._spread_blocks_fill(quote):
+            return []
 
         max_fill_qty = int(
             (Decimal(quote.volume) * self._max_fill_ratio_of_volume).to_integral_value(
@@ -74,11 +82,17 @@ class PaperBroker:
         for broker_order_id, order in list(self._open_orders.items()):
             if order.symbol != quote.symbol or remaining_volume <= 0:
                 continue
-            fill_price = self._execution_price(order, quote)
-            if fill_price is None:
+            base_price = self._execution_price(order, quote)
+            if base_price is None:
                 continue
 
             fill_qty = min(order.quantity, remaining_volume)
+            fill_price = self._apply_slippage_and_impact(
+                base_price=base_price,
+                side=order.side,
+                fill_qty=fill_qty,
+                quote_volume=quote.volume,
+            )
             commission = (
                 self._commission_per_share * Decimal(fill_qty) + self._commission_per_fill
             )
@@ -144,3 +158,39 @@ class PaperBroker:
             return quote.bid
 
         return None
+
+    def _spread_blocks_fill(self, quote: Quote) -> bool:
+        """Refuse to fill when spread exceeds the configured threshold.
+
+        Disabled when max_spread_pct_for_fill == 0 (default; backward compatible).
+        """
+        if self._max_spread_pct_for_fill <= 0:
+            return False
+        if quote.last <= 0:
+            return False
+        spread_pct = (quote.ask - quote.bid) / quote.last
+        return spread_pct > self._max_spread_pct_for_fill
+
+    def _apply_slippage_and_impact(
+        self,
+        *,
+        base_price: Decimal,
+        side: Side,
+        fill_qty: int,
+        quote_volume: int,
+    ) -> Decimal:
+        """Apply slippage (basis points) + market impact scaled by fill_qty / quote_volume.
+
+        BUY → price moves up (more expensive); SELL → price moves down (worse).
+        Returns base_price unchanged when both slippage settings are 0.
+        """
+        bps = self._slippage_bps
+        if self._market_impact_bps_per_pct_volume > 0 and quote_volume > 0:
+            pct_volume_consumed = (Decimal(fill_qty) / Decimal(quote_volume)) * Decimal(100)
+            bps = bps + self._market_impact_bps_per_pct_volume * pct_volume_consumed
+        if bps == 0:
+            return base_price
+        factor = Decimal(1) + (bps / Decimal(10000))
+        if side == Side.BUY:
+            return base_price * factor
+        return base_price * (Decimal(2) - factor)
