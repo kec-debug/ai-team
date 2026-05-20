@@ -8,6 +8,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
+from app.agents.flow import FlowAnalysisRequest, analyze_flow
 from app.domain.enums import OrderType, Session, Side
 from app.domain.market import StrategyInput
 from app.domain.orders import OrderIntent
@@ -72,6 +73,11 @@ class PaperOrderSimulateRequest(BaseModel):
 
 class LiveArmRequest(BaseModel):
     acknowledge: bool = False
+
+
+class LiveOrderEntryRequest(BaseModel):
+    acknowledge: bool = False
+    phrase: str = ""
 
 
 @router.get("/healthz")
@@ -357,6 +363,7 @@ def _agent_status_payload(request: Request) -> dict[str, Any]:
         "analysis_count": len(analyzed_symbols),
         "analyzed_symbols": analyzed_symbols,
         "primary_symbols": analyzed_symbols[:3] or watchlist[:3],
+        "flow_analysis": {} if not traces else traces[-1].get("flow_analysis", {}),
         "blockers": ["research_only_no_oms_submission"],
         "recommendations": recommendations,
         "trace_count": len(traces),
@@ -367,6 +374,37 @@ def _agent_status_payload(request: Request) -> dict[str, Any]:
 @router.get("/agents/status")
 def agents_status(request: Request) -> dict[str, Any]:
     return _agent_status_payload(request)
+
+
+@router.get("/agents/flow/status")
+def agents_flow_status(request: Request) -> dict[str, Any]:
+    watchlist = list(request.app.state.settings.symbol_allowlist)[:10] or _DEFAULT_AGENT_WATCHLIST
+    return {
+        "status": "ready",
+        "provider_used": "deterministic_flow_scorer",
+        "supported_analysis": [
+            "volume_profile",
+            "pullback",
+            "accumulation_flow",
+            "large_trade_flow",
+        ],
+        "watchlist_candidates": watchlist,
+        "data_boundary": "visible_market_data_only",
+        "secret_exposed": False,
+    }
+
+
+@router.post("/agents/flow/run")
+def agents_flow_run(payload: FlowAnalysisRequest, request: Request) -> dict[str, Any]:
+    watchlist = list(request.app.state.settings.symbol_allowlist)[:10] or _DEFAULT_AGENT_WATCHLIST
+    result = analyze_flow(payload, watchlist)
+    traces = getattr(request.app.state, "flow_agent_traces", None)
+    if traces is None:
+        traces = []
+        request.app.state.flow_agent_traces = traces
+    serialized = result.model_dump(mode="json")
+    traces.append(serialized)
+    return serialized
 
 
 @router.post("/agents/run")
@@ -390,6 +428,10 @@ def agents_run(payload: AgentRunRequest, request: Request) -> dict[str, Any]:
         }
         for symbol in symbols[:5]
     ]
+    flow_analysis = analyze_flow(
+        FlowAnalysisRequest(symbols=symbols[:5], context=payload.context),
+        _DEFAULT_AGENT_WATCHLIST,
+    ).model_dump(mode="json")
     trace = {
         "trace_id": f"agent-trace-{len(_agent_traces(request)) + 1}",
         "provider_used": "deterministic_stub",
@@ -399,6 +441,7 @@ def agents_run(payload: AgentRunRequest, request: Request) -> dict[str, Any]:
         "analysis_count": len(symbols[:5]),
         "analyzed_symbols": symbols[:5],
         "primary_symbols": symbols[:3],
+        "flow_analysis": flow_analysis,
         "blockers": ["research_only_no_oms_submission", "no_llm_call_performed"],
         "recommendations": recommendations,
         "context_keys": sorted(payload.context.keys()),
@@ -485,11 +528,13 @@ def strategy_simulate(strategy_id: str, payload: StrategySimulateRequest, reques
 def live_status(request: Request) -> dict[str, Any]:
     status = ops_status(request)
     armed = bool(getattr(request.app.state, "live_validation_armed", False))
+    order_entry = _live_order_entry_status(request, status)
     return {
         "armed": armed,
         "locked": not armed,
         "read_only": True,
         "can_trade": False,
+        "order_entry": order_entry,
         "mode": "validation_armed" if armed else "locked",
         "message_ko": (
             "Live Validation 검증 모드가 켜져 있습니다. 실주문은 여전히 차단됩니다."
@@ -533,7 +578,79 @@ def live_arm(payload: LiveArmRequest, request: Request) -> dict[str, Any]:
 @router.post("/live/disarm")
 def live_disarm(request: Request) -> dict[str, Any]:
     request.app.state.live_validation_armed = False
+    request.app.state.live_order_entry_requested = False
     return live_status(request)
+
+
+@router.get("/live/order-entry/status")
+def live_order_entry_status(request: Request) -> dict[str, Any]:
+    return _live_order_entry_status(request, ops_status(request))
+
+
+@router.post("/live/order-entry/request")
+def live_order_entry_request(payload: LiveOrderEntryRequest, request: Request) -> dict[str, Any]:
+    if not payload.acknowledge:
+        raise HTTPException(status_code=400, detail="operator_acknowledgement_required")
+    if payload.phrase.strip() != "실전거래 위험을 이해하고 직접 승인합니다":
+        raise HTTPException(status_code=400, detail="operator_phrase_mismatch")
+    request.app.state.live_order_entry_requested = True
+    return _live_order_entry_status(request, ops_status(request))
+
+
+@router.post("/live/order-entry/disable")
+def live_order_entry_disable(request: Request) -> dict[str, Any]:
+    request.app.state.live_order_entry_requested = False
+    return _live_order_entry_status(request, ops_status(request))
+
+
+@router.get("/kis/status")
+def kis_status(request: Request) -> dict[str, Any]:
+    return _kis_runtime_status(request)
+
+
+@router.post("/kis/authenticate")
+def kis_authenticate(request: Request) -> dict[str, Any]:
+    broker = getattr(request.app.state, "kis_broker", None)
+    if broker is None:
+        raise HTTPException(status_code=424, detail="kis_broker_not_configured")
+    try:
+        broker.authenticate()
+    except Exception as exc:
+        return {**_kis_runtime_status(request), "ok": False, "error": str(exc)}
+    return {**_kis_runtime_status(request), "ok": True}
+
+
+@router.post("/kis/token/refresh")
+def kis_token_refresh(request: Request) -> dict[str, Any]:
+    broker = getattr(request.app.state, "kis_broker", None)
+    if broker is None:
+        raise HTTPException(status_code=424, detail="kis_broker_not_configured")
+    try:
+        broker.refresh_token()
+    except Exception as exc:
+        return {**_kis_runtime_status(request), "ok": False, "error": str(exc)}
+    return {**_kis_runtime_status(request), "ok": True}
+
+
+@router.post("/kis/account/sync")
+def kis_account_sync(request: Request) -> dict[str, Any]:
+    broker = getattr(request.app.state, "kis_broker", None)
+    if broker is None:
+        raise HTTPException(status_code=424, detail="kis_broker_not_configured")
+    try:
+        account = broker.get_account()
+        positions = broker.get_positions()
+    except Exception as exc:
+        return {**_kis_runtime_status(request), "ok": False, "error": str(exc)}
+    return {
+        **_kis_runtime_status(request),
+        "ok": True,
+        "account": {
+            "account_no_masked": account.get("account_no_masked"),
+            "pages_loaded": account.get("pages_loaded"),
+        },
+        "positions_count": len(positions),
+    }
 
 
 @router.get("/live/account")
@@ -598,6 +715,76 @@ def _serialize_live_validation_status(
     if include_checklist:
         payload["items"] = [_serialize_preflight_item(item) for item in status.items]
     return payload
+
+
+def _kis_runtime_status(request: Request) -> dict[str, Any]:
+    settings = request.app.state.settings
+    broker = getattr(request.app.state, "kis_broker", None)
+    if broker is None:
+        return {
+            "configured": False,
+            "api_mode": settings.kis_api_mode,
+            "env": settings.kis_env,
+            "authenticated": False,
+            "account_loaded": False,
+            "positions_loaded": False,
+            "market_data_available": False,
+            "capabilities": {},
+            "secret_exposed": False,
+        }
+    health = broker.healthcheck()
+    return {
+        "configured": True,
+        "api_mode": settings.kis_api_mode,
+        "env": settings.kis_env,
+        "authenticated": bool(health.get("authenticated", False)),
+        "token_expires_at_masked_or_relative": health.get("token_expires_at"),
+        "account_loaded": bool(health.get("account_loaded", False)),
+        "positions_loaded": bool(health.get("positions_loaded", False)),
+        "cash_balance_loaded": bool(health.get("cash_balance_loaded", False)),
+        "market_data_available": bool((health.get("market_data") or {}).get("connected", False)),
+        "account_no_masked": broker.account.masked_account_no(),
+        "capabilities": broker.capabilities(),
+        "last_error": health.get("last_error"),
+        "secret_exposed": False,
+    }
+
+
+def _live_order_entry_status(request: Request, ops: dict[str, Any]) -> dict[str, Any]:
+    settings = request.app.state.settings
+    kis = _kis_runtime_status(request)
+    requested = bool(getattr(request.app.state, "live_order_entry_requested", False))
+    armed = bool(getattr(request.app.state, "live_validation_armed", False))
+    blockers = []
+    if not requested:
+        blockers.append("operator_request_required")
+    if not armed:
+        blockers.append("live_validation_arm_required")
+    if not ops.get("live_validation_ready", False):
+        blockers.append("preflight_not_ready")
+    if settings.live_trading_enabled is not True:
+        blockers.append("live_trading_enabled_env_false")
+    if settings.kis_order_dry_run is not False:
+        blockers.append("kis_order_dry_run_enabled")
+    if not bool(kis.get("authenticated", False)):
+        blockers.append("kis_authentication_required")
+    if not bool(kis.get("account_loaded", False)):
+        blockers.append("kis_account_sync_required")
+    if not bool((kis.get("capabilities") or {}).get("submission", False)):
+        blockers.append("kis_submission_capability_unavailable")
+    return {
+        "requested": requested,
+        "can_trade": len(blockers) == 0,
+        "broker": "KisBroker" if kis.get("configured") else None,
+        "mode": "blocked" if blockers else "ready",
+        "blockers": blockers,
+        "message_ko": (
+            "실전 주문 제출 준비가 완료되었습니다. 그래도 주문은 RiskEngine과 OMS를 통과해야 합니다."
+            if not blockers
+            else "실전 주문은 아직 차단되어 있습니다. 차단 사유를 먼저 해소하세요."
+        ),
+        "secret_exposed": False,
+    }
 
 
 @router.get("/ops/status")

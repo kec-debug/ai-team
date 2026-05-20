@@ -68,11 +68,40 @@ def test_agent_research_endpoints_are_deterministic_and_non_executable():
         assert body["analysis_count"] == 2
         assert body["analyzed_symbols"] == ["AAPL", "MSFT"]
         assert body["primary_symbols"] == ["AAPL", "MSFT"]
+        assert body["flow_analysis"]["analysis_count"] == 2
+        assert body["flow_analysis"]["signals"][0]["metadata"]["no_hidden_actor_claim"] is True
         assert body["recommendations"][0]["non_executable_order_intent"]["executable"] is False
 
         traces = client.get("/agents/traces")
         assert traces.status_code == 200
         assert len(traces.json()["traces"]) == 1
+
+
+def test_flow_agent_scores_visible_inputs_and_marks_missing_data():
+    with TestClient(create_app()) as client:
+        response = client.post(
+            "/agents/flow/run",
+            json={
+                "candidates": [
+                    {
+                        "symbol": "AAPL",
+                        "current_price": "101",
+                        "vwap": "100",
+                        "volume": 300000,
+                        "avg_volume": 100000,
+                        "large_trade_net_value": "250000",
+                        "institutional_net_buy_value": "100000",
+                    },
+                    {"symbol": "MSFT"},
+                ]
+            },
+        )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["analysis_count"] == 2
+    assert body["signals"][0]["symbol"] == "AAPL"
+    assert body["signals"][0]["confidence"] > body["signals"][1]["confidence"]
+    assert "pullback_requires_current_price_and_vwap" in body["signals"][1]["blockers"]
 
 
 def test_strategy_lab_endpoints_do_not_submit_orders():
@@ -148,3 +177,49 @@ def test_live_validation_can_arm_and_disarm_without_enabling_trading():
         assert disarmed.json()["armed"] is False
         assert disarmed.json()["locked"] is True
         assert disarmed.json()["can_trade"] is False
+
+
+def test_live_order_entry_request_is_gated_and_does_not_enable_trading():
+    with TestClient(create_app()) as client:
+        bad_phrase = client.post(
+            "/live/order-entry/request",
+            json={"acknowledge": True, "phrase": "enable"},
+        )
+        assert bad_phrase.status_code == 400
+
+        client.post("/live/arm", json={"acknowledge": True})
+        requested = client.post(
+            "/live/order-entry/request",
+            json={
+                "acknowledge": True,
+                "phrase": "실전거래 위험을 이해하고 직접 승인합니다",
+            },
+        )
+        assert requested.status_code == 200
+        body = requested.json()
+        assert body["requested"] is True
+        assert body["can_trade"] is False
+        assert "live_trading_enabled_env_false" in body["blockers"]
+
+        status = client.get("/live/status").json()
+        assert status["order_entry"]["requested"] is True
+        assert status["can_trade"] is False
+
+        disabled = client.post("/live/order-entry/disable")
+        assert disabled.status_code == 200
+        assert disabled.json()["requested"] is False
+
+
+def test_kis_runtime_endpoints_are_safe_when_mock_mode():
+    with TestClient(create_app()) as client:
+        status = client.get("/kis/status")
+        assert status.status_code == 200
+        assert status.json()["secret_exposed"] is False
+
+        auth = client.post("/kis/authenticate")
+        if auth.status_code == 200:
+            assert auth.json()["secret_exposed"] is False
+            assert auth.json()["ok"] is False
+            assert "mock_mode_no_network" in auth.json()["error"]
+        else:
+            assert auth.status_code == 424

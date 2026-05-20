@@ -167,14 +167,20 @@ def test_dashboard_has_live_toggle_and_agent_visual_markers():
     for marker in (
         "Live Validation 켜기",
         "Live Validation 끄기",
+        "실전 주문 준비 요청",
+        "실전 주문 준비 해제",
+        "KIS 인증 확인",
+        "KIS 계좌 동기화",
         "분석 종목 수",
         "주요 종목",
         "분석 후보 흐름",
+        "매물대·눌림목·큰손 흐름",
         "agent-symbol-chart",
         "KIS API 모드",
         "KIS 연결 해석",
         'id="btn-live-validation-arm"',
         'id="btn-live-validation-disarm"',
+        'id="btn-live-order-entry-request"',
     ):
         assert marker in text
 

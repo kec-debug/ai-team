@@ -308,6 +308,16 @@
             <svg id="agent-symbol-chart" class="chart" role="img" aria-label="분석 중인 종목 후보 차트"></svg>
           </div>
           <div class="metric-card wide">
+            <h3>매물대·눌림목·큰손 흐름</h3>
+            <table>
+              <tr><th>상위 후보</th><td id="flow-top-symbols">-</td></tr>
+              <tr><th>매물대 점수</th><td id="flow-volume-profile">-</td></tr>
+              <tr><th>눌림목 점수</th><td id="flow-pullback">-</td></tr>
+              <tr><th>세력/큰손 점수</th><td id="flow-whale">-</td></tr>
+              <tr><th>데이터 한계</th><td id="flow-blockers">-</td></tr>
+            </table>
+          </div>
+          <div class="metric-card wide">
             <h3>분석 상태</h3>
             <table><tr><th>제공자</th><td id="agent-provider">-</td></tr><tr><th>파싱 상태</th><td id="agent-parse">-</td></tr><tr><th>Trace</th><td id="agent-trace">-</td></tr></table>
           </div>
@@ -414,6 +424,10 @@
           <div class="button-row">
             <button id="btn-live-validation-arm">Live Validation 켜기</button>
             <button id="btn-live-validation-disarm" class="danger-soft">Live Validation 끄기</button>
+            <button id="btn-kis-auth">KIS 인증 확인</button>
+            <button id="btn-kis-sync">KIS 계좌 동기화</button>
+            <button id="btn-live-order-entry-request" class="danger-soft">실전 주문 준비 요청</button>
+            <button id="btn-live-order-entry-disable">실전 주문 준비 해제</button>
           </div>
         </div>
         <p class="muted">Live Validation은 실주문 전 운영 점검 모드입니다. 켜도 실주문은 계속 차단되고, 사전 점검 상태만 더 선명하게 추적합니다.</p>
@@ -421,6 +435,8 @@
           <tr><th>검증 모드</th><td id="live-armed">-</td></tr>
           <tr><th>잠금 상태</th><td id="live-locked">-</td></tr>
           <tr><th>거래 가능</th><td id="live-can-trade">false</td></tr>
+          <tr><th>실전 주문 준비</th><td id="live-order-entry-mode">-</td></tr>
+          <tr><th>실전 주문 차단 사유</th><td id="live-order-entry-blockers">-</td></tr>
           <tr><th>상태 메시지</th><td id="live-message">-</td></tr>
           <tr><th>계좌 조회</th><td id="live-account">-</td></tr>
           <tr><th>포지션 조회</th><td id="live-positions">-</td></tr>
@@ -547,6 +563,8 @@ const ENDPOINTS = {
   paperTrainingRuns: "/paper/training/runs",
   agentsStatus: "/agents/status",
   agentsRun: "/agents/run",
+  agentsFlowStatus: "/agents/flow/status",
+  agentsFlowRun: "/agents/flow/run",
   agentsTraces: "/agents/traces",
   strategies: "/strategies",
   reports: "/reports",
@@ -555,8 +573,14 @@ const ENDPOINTS = {
   livePreflight: "/live/preflight",
   liveArm: "/live/arm",
   liveDisarm: "/live/disarm",
+  liveOrderEntryStatus: "/live/order-entry/status",
+  liveOrderEntryRequest: "/live/order-entry/request",
+  liveOrderEntryDisable: "/live/order-entry/disable",
   liveAccount: "/live/account",
   livePositions: "/live/positions",
+  kisStatus: "/kis/status",
+  kisAuthenticate: "/kis/authenticate",
+  kisAccountSync: "/kis/account/sync",
   dryRunStatus: "/paper/dry-run/status",
   dryRunStart: "/paper/dry-run/start",
   dryRunStop: "/paper/dry-run/stop",
@@ -805,12 +829,26 @@ function updateAgentVisuals(agent) {
   setText("agent-blockers", (agent.blockers || []).join(", ") || "차단 사유 없음");
   renderPills("agent-recommendations", (agent.recommendations || []).map((r) => r.symbol));
   drawSymbolChart(analyzed.length ? analyzed : watchlist, primary);
+  updateFlowVisuals(agent.flow_analysis || {});
+}
+
+function updateFlowVisuals(flow) {
+  const signals = flow.signals || [];
+  const first = signals.length ? signals[0] : {};
+  renderPills("flow-top-symbols", flow.top_symbols || signals.map((s) => s.symbol).slice(0, 3));
+  setText("flow-volume-profile", first.volume_profile_score !== undefined ? first.volume_profile_score : "-");
+  setText("flow-pullback", first.pullback_score !== undefined ? first.pullback_score : "-");
+  setText("flow-whale", first.whale_flow_score !== undefined ? first.whale_flow_score : "-");
+  setText("flow-blockers", (flow.blockers || first.blockers || []).join(", ") || "차단 사유 없음");
 }
 
 function updateLivePanel(status) {
   setText("live-armed", boolKo(status.armed, "켜짐", "꺼짐"));
   setText("live-locked", boolKo(status.locked, "잠금", "점검 모드"));
   setText("live-can-trade", boolKo(status.can_trade, "가능", "불가능"));
+  const orderEntry = status.order_entry || {};
+  setText("live-order-entry-mode", orderEntry.mode || "-");
+  setText("live-order-entry-blockers", (orderEntry.blockers || []).join(", ") || "-");
   setText("live-message", status.message_ko || "-");
   const section = document.getElementById("live-validation-console-section");
   if (section) section.className = status.armed ? "locked armed" : "locked";
@@ -1132,12 +1170,51 @@ async function runAgent() {
   } catch (e) { logMsg("에이전트 오류: " + e.message); }
 }
 
+async function authenticateKis() {
+  try {
+    const result = await postAction(ENDPOINTS.kisAuthenticate, {});
+    logMsg(result.ok ? "KIS 인증 확인 완료" : "KIS 인증 실패: " + (result.error || result.last_error || "-"));
+  } catch (e) { logMsg("KIS 인증 오류: " + e.message); }
+  refreshAll();
+}
+
+async function syncKisAccount() {
+  try {
+    const result = await postAction(ENDPOINTS.kisAccountSync, {});
+    logMsg(result.ok ? "KIS 계좌 동기화 완료" : "KIS 계좌 동기화 실패: " + (result.error || result.last_error || "-"));
+  } catch (e) { logMsg("KIS 계좌 동기화 오류: " + e.message); }
+  refreshAll();
+}
+
 async function armLiveValidation() {
   try {
     const result = await postAction(ENDPOINTS.liveArm, { acknowledge: true });
     updateLivePanel(result);
     logMsg("Live Validation 검증 모드를 켰습니다. 실주문은 계속 차단됩니다.");
   } catch (e) { logMsg("Live Validation 켜기 오류: " + e.message); }
+  refreshAll();
+}
+
+async function requestLiveOrderEntry() {
+  try {
+    const result = await postAction(ENDPOINTS.liveOrderEntryRequest, {
+      acknowledge: true,
+      phrase: "실전거래 위험을 이해하고 직접 승인합니다"
+    });
+    setText("live-order-entry-mode", result.mode || "-");
+    setText("live-order-entry-blockers", (result.blockers || []).join(", ") || "-");
+    logMsg(result.can_trade ? "실전 주문 준비 완료" : "실전 주문 준비 요청됨: 아직 차단 사유가 있습니다.");
+  } catch (e) { logMsg("실전 주문 준비 요청 오류: " + e.message); }
+  refreshAll();
+}
+
+async function disableLiveOrderEntry() {
+  try {
+    const result = await postAction(ENDPOINTS.liveOrderEntryDisable, {});
+    setText("live-order-entry-mode", result.mode || "-");
+    setText("live-order-entry-blockers", (result.blockers || []).join(", ") || "-");
+    logMsg("실전 주문 준비를 해제했습니다.");
+  } catch (e) { logMsg("실전 주문 준비 해제 오류: " + e.message); }
   refreshAll();
 }
 
@@ -1188,6 +1265,10 @@ document.getElementById("btn-training-status").addEventListener("click", refresh
 document.getElementById("btn-agent-run").addEventListener("click", runAgent);
 document.getElementById("btn-live-validation-arm").addEventListener("click", armLiveValidation);
 document.getElementById("btn-live-validation-disarm").addEventListener("click", disarmLiveValidation);
+document.getElementById("btn-kis-auth").addEventListener("click", authenticateKis);
+document.getElementById("btn-kis-sync").addEventListener("click", syncKisAccount);
+document.getElementById("btn-live-order-entry-request").addEventListener("click", requestLiveOrderEntry);
+document.getElementById("btn-live-order-entry-disable").addEventListener("click", disableLiveOrderEntry);
 
 refreshAll();
 </script>
