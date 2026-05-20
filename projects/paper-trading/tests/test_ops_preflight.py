@@ -28,6 +28,7 @@ def _payload(**overrides):
         "kis_market_data_available": True,
         "kis_account_loaded": True,
         "kis_order_entry_ready": False,
+        "kis_order_submission_available": False,
         "secret_exposed": False,
     }
     payload.update(overrides)
@@ -45,9 +46,10 @@ def _status(settings=None, paper_engine=None, payload=None):
 
 def test_live_validation_ready_true_when_all_required_status_inputs_pass():
     status = _status()
-    assert status.live_validation_ready is True
+    assert status.live_validation_ready is False
     assert status.banner_level == "info"
     assert len(status.items) == 14
+    assert any(item.passed is False for item in status.items)
 
 
 def test_ready_false_when_no_recent_paper_activity():
@@ -85,8 +87,19 @@ def test_market_orders_allowed_escalates_danger_and_ready_false():
 def test_secret_exposed_escalates_danger_and_ready_false():
     status = _status(payload=_payload(secret_exposed=True))
     assert status.live_validation_ready is False
+    assert status.secret_exposed is True
     assert status.banner_level == "danger"
     assert "secret" in status.banner_text_ko
+
+
+def test_kis_order_entry_ready_uses_capability_not_legacy_mode_flag():
+    status = _status(payload=_payload(kis_order_entry_ready=True, kis_order_submission_available=False))
+    assert status.kis_order_entry_ready is False
+
+
+def test_live_validation_ready_matches_entire_checklist():
+    status = _status()
+    assert status.live_validation_ready is all(item.passed for item in status.items)
 
 
 def test_kill_switch_engaged_warns_and_ready_false():

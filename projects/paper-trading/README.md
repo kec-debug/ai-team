@@ -400,6 +400,8 @@ http://127.0.0.1:8000/dashboard
 
 대시보드 상단의 사고 방지 배너, `Live Validation 준비 상태`, `Preflight Checklist`를 먼저 확인합니다.
 
+현재 대시보드는 운영 콘솔 흐름으로 구성되어 있습니다. 첫 화면에서 `Overview`, `Paper Training`, `Agent Research`, `Strategy Lab`, `Orders / Fills`, `Portfolio`, `Reports`, `Live Validation`, `Risk / Ops`를 순서대로 확인할 수 있습니다. Live Validation은 검증 모드 on/off만 제공하며, 켜져 있어도 실주문은 계속 차단됩니다.
+
 ### Paper simulation 실행
 
 대시보드에서 `예시 모의 주문 실행` 또는 `모의 주문 실행` 버튼을 사용합니다. 이 기능은 내부 PaperBroker와 PaperEngine만 사용하며, 실제 브로커 주문을 전송하지 않습니다.
@@ -423,6 +425,46 @@ curl http://127.0.0.1:8000/ops/preflight
 ```
 
 대시보드의 `Dry-run 시작`, `Tick 1회 실행`, `리포트 분석`, `최신 리포트 보기` 버튼도 같은 paper-only 검증 흐름을 보조합니다.
+
+### Product console API
+
+Paper Training API는 기존 dry-run runtime을 감싸는 paper-only surface입니다. 24시간 관찰/훈련에 사용할 수 있지만 실거래가 아니며, `LIVE_TRADING_ENABLED=true` 또는 non-paper mode에서는 실행이 차단됩니다.
+
+```bash
+curl http://127.0.0.1:8000/paper/training/status
+curl -X POST http://127.0.0.1:8000/paper/training/start
+curl -X POST http://127.0.0.1:8000/paper/training/tick -H "content-type: application/json" -d '{"snapshots":[]}'
+curl -X POST http://127.0.0.1:8000/paper/training/stop
+curl http://127.0.0.1:8000/paper/training/runs
+```
+
+Agent Research API는 deterministic stub입니다. LLM 호출을 하지 않고, 반환하는 recommendation은 non-executable intent일 뿐 OMS에 제출되지 않습니다.
+
+```bash
+curl http://127.0.0.1:8000/agents/status
+curl -X POST http://127.0.0.1:8000/agents/run -H "content-type: application/json" -d '{"symbols":["AAPL"],"context":{}}'
+curl http://127.0.0.1:8000/agents/traces
+```
+
+Strategy Lab API는 등록된 전략을 조회하고 snapshot을 평가합니다. 전략은 직접 주문하지 않으며, 실행 가능한 주문 생성은 여전히 RiskEngine과 OMS 경계를 통과해야 합니다.
+
+```bash
+curl http://127.0.0.1:8000/strategies
+curl http://127.0.0.1:8000/strategies/premarket_gap_volume_breakout
+```
+
+Reports와 Live Console은 다음 read-only endpoint를 제공합니다.
+
+```bash
+curl http://127.0.0.1:8000/reports
+curl http://127.0.0.1:8000/reports/latest
+curl http://127.0.0.1:8000/live/status
+curl http://127.0.0.1:8000/live/preflight
+curl -X POST http://127.0.0.1:8000/live/arm -H "content-type: application/json" -d '{"acknowledge":true}'
+curl -X POST http://127.0.0.1:8000/live/disarm
+curl http://127.0.0.1:8000/live/account
+curl http://127.0.0.1:8000/live/positions
+```
 
 ### Live validation 전에 반드시 확인할 것
 

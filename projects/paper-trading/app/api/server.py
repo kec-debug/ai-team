@@ -69,6 +69,7 @@ def create_app() -> FastAPI:
         app.state.portfolio = portfolio
         app.state.configured_brokers = configured_brokers
         app.state.kis_broker = kis_broker
+        app.state.live_validation_armed = False
         yield
 
     app = FastAPI(title="Paper Trading Runtime", lifespan=lifespan)

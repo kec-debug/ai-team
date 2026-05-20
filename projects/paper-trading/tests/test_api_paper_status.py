@@ -107,7 +107,7 @@ def test_paper_status_with_kis_config_masks_account(monkeypatch):
     assert body["kis_last_error"] is None
     assert body["account_no_masked"] == "***5678"
     assert body["secret_exposed"] is False
-    assert body["kis_order_entry_ready"] is True
+    assert body["kis_order_entry_ready"] is False
     assert body["kis_order_entry_mode"] == "not_implemented"
     assert body["kis_order_methods_fail_closed"] is True
     assert body["kill_switch_engaged"] is False

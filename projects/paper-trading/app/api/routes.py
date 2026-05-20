@@ -20,11 +20,12 @@ from app.runtime.paper_status import (
     build_paper_journal_status,
     build_paper_positions_status,
 )
-from app.strategy import STRATEGY_NAMES
+from app.strategy import STRATEGY_NAMES, create_strategy
 
 router = APIRouter()
 
 _DASHBOARD_HTML_PATH = Path(__file__).resolve().parents[1] / "static" / "dashboard.html"
+_DEFAULT_AGENT_WATCHLIST = ["AAPL", "MSFT", "NVDA", "TSLA", "005930.KS"]
 
 
 class PaperRunRequest(BaseModel):
@@ -38,6 +39,15 @@ class DryRunTickRequest(BaseModel):
 
 class AnalyzeRequest(BaseModel):
     run_dir: str | None = None
+
+
+class AgentRunRequest(BaseModel):
+    symbols: list[str] = []
+    context: dict[str, Any] = {}
+
+
+class StrategySimulateRequest(BaseModel):
+    snapshot: StrategyInput
 
 
 class PaperRunResponse(BaseModel):
@@ -58,6 +68,10 @@ class PaperOrderSimulateRequest(BaseModel):
     mock_volume: int = Field(ge=0)
     currency: str = "USD"
     session: Session | None = Session.REGULAR
+
+
+class LiveArmRequest(BaseModel):
+    acknowledge: bool = False
 
 
 @router.get("/healthz")
@@ -85,17 +99,6 @@ def paper_status(request: Request) -> dict[str, Any]:
     )
     kis_health = kis_broker.healthcheck() if kis_broker else {}
     market_health = kis_health.get("market_data", {})
-    kis_order_entry_mode = "disabled"
-    if kis_broker is not None:
-        settings_safe = (
-            settings.trading_mode.value == "paper"
-            and settings.live_trading_enabled is False
-            and settings.allow_market_orders is False
-            and settings.kis_env == "paper"
-            and settings.kill_switch_engaged is False
-        )
-        kis_order_entry_mode = "not_implemented" if settings_safe else "disabled"
-    kis_order_entry_ready = kis_broker is not None and kis_order_entry_mode != "disabled"
     capabilities = (
         kis_broker.capabilities()
         if kis_broker
@@ -108,6 +111,29 @@ def paper_status(request: Request) -> dict[str, Any]:
             "order_status": False,
         }
     )
+    kis_order_entry_mode = "disabled"
+    kis_status_note_ko = "KIS 설정이 없습니다. .env의 KIS 환경, 계좌, 앱 키, 앱 시크릿 항목을 확인하세요."
+    if kis_broker is not None:
+        settings_safe = (
+            settings.trading_mode.value == "paper"
+            and settings.live_trading_enabled is False
+            and settings.allow_market_orders is False
+            and settings.kis_env == "paper"
+            and settings.kill_switch_engaged is False
+        )
+        kis_order_entry_ready = settings_safe and bool(capabilities.get("submission", False))
+        if kis_order_entry_ready:
+            kis_order_entry_mode = "ready"
+            kis_status_note_ko = "KIS 주문 capability가 준비된 상태입니다. 그래도 실주문은 별도 guard 뒤에 있습니다."
+        else:
+            kis_order_entry_mode = "not_implemented" if settings_safe else "disabled"
+            if kis_loaded:
+                kis_status_note_ko = (
+                    "KIS 설정은 로드됐지만 인증/계좌/시세 조회가 아직 완료되지 않았습니다. "
+                    f"현재 KIS_API_MODE={settings.kis_api_mode!r}이며 주문 capability는 비활성입니다."
+                )
+    else:
+        kis_order_entry_ready = False
     session_policy = session_router.policy_for_us() if session_router is not None else None
     portfolio_snapshot = portfolio.get_snapshot() if portfolio is not None else None
     dry_run_controller = getattr(request.app.state, "dry_run_controller", None)
@@ -127,6 +153,7 @@ def paper_status(request: Request) -> dict[str, Any]:
         # Credentials are never included in this response.
         "broker_type": type(broker).__name__,
         "broker_environment": "paper",
+        "kis_api_mode": settings.kis_api_mode,
         "live_trading_enabled": settings.live_trading_enabled,
         "market_orders_allowed": settings.allow_market_orders,
         "kis_config_loaded": kis_loaded,
@@ -144,6 +171,7 @@ def paper_status(request: Request) -> dict[str, Any]:
         "configured_brokers": list(getattr(request.app.state, "configured_brokers", [])),
         "kis_order_entry_ready": kis_order_entry_ready,
         "kis_order_entry_mode": kis_order_entry_mode,
+        "kis_status_note_ko": kis_status_note_ko,
         "kis_order_methods_fail_closed": True,
         "kill_switch_engaged": bool(settings.kill_switch_engaged),
         "kis_order_dry_run": bool(settings.kis_order_dry_run),
@@ -219,6 +247,325 @@ def paper_engine_status(request: Request) -> dict[str, Any]:
     }
 
 
+def _paper_training_allowed(request: Request) -> None:
+    settings = request.app.state.settings
+    if settings.trading_mode.value != "paper" or settings.live_trading_enabled:
+        raise HTTPException(status_code=423, detail="paper_training_locked")
+
+
+def _paper_training_payload(request: Request) -> dict[str, Any]:
+    settings = request.app.state.settings
+    controller = request.app.state.dry_run_controller
+    summary = controller.summary()
+    counters = summary.get("counters", {})
+    return {
+        "running": summary["running"],
+        "ticks_total": counters.get("ticks_total", 0),
+        "last_tick_at": summary["last_tick_at"],
+        "last_error": counters.get("last_error"),
+        "mode": settings.trading_mode.value,
+        "strategies": list(STRATEGY_NAMES),
+        "recent_counters": counters,
+        "safety_flags": _safety_flags(request),
+        "run_dir": summary["run_dir"],
+        "secret_exposed": False,
+    }
+
+
+@router.get("/paper/training/status")
+def paper_training_status(request: Request) -> dict[str, Any]:
+    return _paper_training_payload(request)
+
+
+@router.post("/paper/training/start")
+def paper_training_start(request: Request) -> dict[str, Any]:
+    _paper_training_allowed(request)
+    controller = request.app.state.dry_run_controller
+    if controller.is_running():
+        payload = _paper_training_payload(request)
+        payload["already_running"] = True
+        return payload
+    try:
+        controller.start()
+    except RuntimeError as exc:
+        if "already running" in str(exc).lower():
+            payload = _paper_training_payload(request)
+            payload["already_running"] = True
+            return payload
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    payload = _paper_training_payload(request)
+    payload["already_running"] = False
+    return payload
+
+@router.post("/paper/training/stop")
+def paper_training_stop(request: Request) -> dict[str, Any]:
+    _paper_training_allowed(request)
+    try:
+        request.app.state.dry_run_controller.stop()
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return _paper_training_payload(request)
+
+
+@router.post("/paper/training/tick")
+def paper_training_tick(payload: DryRunTickRequest, request: Request) -> dict[str, Any]:
+    _paper_training_allowed(request)
+    try:
+        result = request.app.state.dry_run_controller.tick(payload.snapshots)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    response = _paper_training_payload(request)
+    response["tick_result"] = result
+    return response
+
+
+@router.get("/paper/training/runs")
+def paper_training_runs(request: Request) -> dict[str, Any]:
+    settings = request.app.state.settings
+    base = _reports_base(settings)
+    runs = []
+    if base.exists():
+        for path in sorted((p for p in base.iterdir() if p.is_dir()), reverse=True)[:20]:
+            runs.append({"run_dir": path.name})
+    return {
+        "runs": runs,
+        "current_run": request.app.state.dry_run_controller.summary()["run_dir"],
+        "mode": settings.trading_mode.value,
+        "secret_exposed": False,
+    }
+
+
+def _agent_traces(request: Request) -> list[dict[str, Any]]:
+    traces = getattr(request.app.state, "agent_traces", None)
+    if traces is None:
+        traces = []
+        request.app.state.agent_traces = traces
+    return traces
+
+
+def _agent_status_payload(request: Request) -> dict[str, Any]:
+    traces = _agent_traces(request)
+    watchlist = list(request.app.state.settings.symbol_allowlist)[:10] or _DEFAULT_AGENT_WATCHLIST
+    recommendations = [] if not traces else traces[-1]["recommendations"]
+    analyzed_symbols = [] if not traces else traces[-1].get("analyzed_symbols", [])
+    return {
+        "status": "ready",
+        "provider_used": "deterministic_stub",
+        "fallback_used": False,
+        "parse_status": "not_run" if not traces else traces[-1]["parse_status"],
+        "watchlist_candidates": watchlist,
+        "analysis_count": len(analyzed_symbols),
+        "analyzed_symbols": analyzed_symbols,
+        "primary_symbols": analyzed_symbols[:3] or watchlist[:3],
+        "blockers": ["research_only_no_oms_submission"],
+        "recommendations": recommendations,
+        "trace_count": len(traces),
+        "secret_exposed": False,
+    }
+
+
+@router.get("/agents/status")
+def agents_status(request: Request) -> dict[str, Any]:
+    return _agent_status_payload(request)
+
+
+@router.post("/agents/run")
+def agents_run(payload: AgentRunRequest, request: Request) -> dict[str, Any]:
+    symbols = [symbol.upper() for symbol in payload.symbols if symbol.strip()]
+    if not symbols:
+        symbols = list(request.app.state.settings.symbol_allowlist)[:3] or _DEFAULT_AGENT_WATCHLIST[:3]
+    recommendations = [
+        {
+            "symbol": symbol,
+            "action": "research_candidate",
+            "non_executable_order_intent": {
+                "symbol": symbol,
+                "side": "BUY",
+                "order_type": "LIMIT",
+                "quantity": 1,
+                "limit_price": None,
+                "executable": False,
+            },
+            "reason": "deterministic placeholder only; OMS submission is disabled",
+        }
+        for symbol in symbols[:5]
+    ]
+    trace = {
+        "trace_id": f"agent-trace-{len(_agent_traces(request)) + 1}",
+        "provider_used": "deterministic_stub",
+        "fallback_used": False,
+        "parse_status": "parsed",
+        "watchlist_candidates": symbols[:5],
+        "analysis_count": len(symbols[:5]),
+        "analyzed_symbols": symbols[:5],
+        "primary_symbols": symbols[:3],
+        "blockers": ["research_only_no_oms_submission", "no_llm_call_performed"],
+        "recommendations": recommendations,
+        "context_keys": sorted(payload.context.keys()),
+        "secret_exposed": False,
+    }
+    _agent_traces(request).append(trace)
+    return trace
+
+
+@router.get("/agents/traces")
+def agents_traces(request: Request) -> dict[str, Any]:
+    return {"traces": _agent_traces(request), "secret_exposed": False}
+
+
+def _strategy_result_payload(result) -> dict[str, Any]:
+    data = result.model_dump()
+    intent = data.get("non_executable_order_intent")
+    if isinstance(intent, OrderIntent):
+        data["non_executable_order_intent"] = _intent_payload(intent)
+    return data
+
+
+def _intent_payload(intent: OrderIntent) -> dict[str, Any]:
+    return {
+        "symbol": intent.symbol,
+        "side": intent.side.value,
+        "quantity": intent.quantity,
+        "order_type": intent.order_type.value,
+        "limit_price": str(intent.limit_price),
+        "stop_price": str(intent.stop_price) if intent.stop_price is not None else None,
+        "currency": intent.currency,
+        "client_tag": intent.client_tag,
+        "quote_timestamp": intent.quote_timestamp.isoformat() if intent.quote_timestamp else None,
+        "executable": False,
+    }
+
+
+def _strategy_summary(strategy_id: str, request: Request) -> dict[str, Any]:
+    active = getattr(request.app.state.strategy, "name", None) == strategy_id
+    return {
+        "id": strategy_id,
+        "enabled": active,
+        "paper_only": True,
+        "broker_direct_call": False,
+        "description": f"{strategy_id} paper-only signal evaluator",
+        "parameters": {"status": "placeholder"},
+        "blockers": ["orders_must_flow_through_risk_oms_broker"],
+        "rejection_summary": {"oms_submissions": 0, "broker_calls": 0},
+    }
+
+
+@router.get("/strategies")
+def strategies_list(request: Request) -> dict[str, Any]:
+    return {
+        "strategies": [_strategy_summary(name, request) for name in STRATEGY_NAMES],
+        "secret_exposed": False,
+    }
+
+
+@router.get("/strategies/{strategy_id}")
+def strategy_detail(strategy_id: str, request: Request) -> dict[str, Any]:
+    if strategy_id not in STRATEGY_NAMES:
+        raise HTTPException(status_code=404, detail="strategy_not_found")
+    payload = _strategy_summary(strategy_id, request)
+    payload["secret_exposed"] = False
+    return payload
+
+
+@router.post("/strategies/{strategy_id}/simulate")
+def strategy_simulate(strategy_id: str, payload: StrategySimulateRequest, request: Request) -> dict[str, Any]:
+    if strategy_id not in STRATEGY_NAMES:
+        raise HTTPException(status_code=404, detail="strategy_not_found")
+    strategy = create_strategy(strategy_id, request.app.state.settings)
+    result = strategy.evaluate(payload.snapshot)
+    return {
+        "strategy_id": strategy_id,
+        "result": _strategy_result_payload(result),
+        "submitted_to_oms": False,
+        "secret_exposed": False,
+    }
+
+
+@router.get("/live/status")
+def live_status(request: Request) -> dict[str, Any]:
+    status = ops_status(request)
+    armed = bool(getattr(request.app.state, "live_validation_armed", False))
+    return {
+        "armed": armed,
+        "locked": not armed,
+        "read_only": True,
+        "can_trade": False,
+        "mode": "validation_armed" if armed else "locked",
+        "message_ko": (
+            "Live Validation 검증 모드가 켜져 있습니다. 실주문은 여전히 차단됩니다."
+            if armed
+            else "Live Validation 검증 모드가 꺼져 있습니다. 실주문은 차단됩니다."
+        ),
+        "preflight": status,
+        "secret_exposed": status["secret_exposed"],
+    }
+
+
+@router.get("/live/preflight")
+def live_preflight(request: Request) -> dict[str, Any]:
+    status = ops_preflight(request)
+    armed = bool(getattr(request.app.state, "live_validation_armed", False))
+    return {
+        "armed": armed,
+        "locked": not armed,
+        "read_only": True,
+        "can_trade": False,
+        "preflight": status,
+        "secret_exposed": status["secret_exposed"],
+    }
+
+
+@router.post("/live/arm")
+def live_arm(payload: LiveArmRequest, request: Request) -> dict[str, Any]:
+    status = ops_status(request)
+    if not payload.acknowledge:
+        raise HTTPException(status_code=400, detail="operator_acknowledgement_required")
+    if (
+        status["live_trading_enabled"]
+        or status["market_orders_allowed"]
+        or status["secret_exposed"]
+    ):
+        raise HTTPException(status_code=423, detail="live_validation_arm_blocked_by_safety")
+    request.app.state.live_validation_armed = True
+    return live_status(request)
+
+
+@router.post("/live/disarm")
+def live_disarm(request: Request) -> dict[str, Any]:
+    request.app.state.live_validation_armed = False
+    return live_status(request)
+
+
+@router.get("/live/account")
+def live_account(request: Request) -> dict[str, Any]:
+    status = paper_status(request)
+    available = bool(status.get("kis_account_loaded", False))
+    return {
+        "locked": True,
+        "read_only": True,
+        "status": "available" if available else "unavailable",
+        "reason": None if available else "kis_account_capability_unavailable",
+        "account_no_masked": status.get("account_no_masked"),
+        "cash_balance_loaded": status.get("kis_cash_balance_loaded", False),
+        "secret_exposed": False,
+    }
+
+
+@router.get("/live/positions")
+def live_positions(request: Request) -> dict[str, Any]:
+    status = paper_status(request)
+    available = bool(status.get("kis_positions_loaded", False))
+    return {
+        "locked": True,
+        "read_only": True,
+        "status": "available" if available else "unavailable",
+        "reason": None if available else "kis_positions_capability_unavailable",
+        "positions_loaded": available,
+        "positions": [],
+        "secret_exposed": False,
+    }
+
+
 def _serialize_preflight_item(item: PreflightItem) -> dict[str, Any]:
     return {
         "key": item.key,
@@ -246,7 +593,7 @@ def _serialize_live_validation_status(
         "live_validation_ready": status.live_validation_ready,
         "banner_level": status.banner_level,
         "banner_text_ko": status.banner_text_ko,
-        "secret_exposed": False,
+        "secret_exposed": status.secret_exposed,
     }
     if include_checklist:
         payload["items"] = [_serialize_preflight_item(item) for item in status.items]
@@ -262,7 +609,9 @@ def ops_status(request: Request) -> dict[str, Any]:
         kis_broker=getattr(request.app.state, "kis_broker", None),
         paper_status_payload=paper_payload,
     )
-    return _serialize_live_validation_status(status, include_checklist=False)
+    payload = _serialize_live_validation_status(status, include_checklist=False)
+    payload["live_validation_armed"] = bool(getattr(request.app.state, "live_validation_armed", False))
+    return payload
 
 
 @router.get("/ops/preflight")
@@ -274,7 +623,9 @@ def ops_preflight(request: Request) -> dict[str, Any]:
         kis_broker=getattr(request.app.state, "kis_broker", None),
         paper_status_payload=paper_payload,
     )
-    return _serialize_live_validation_status(status, include_checklist=True)
+    payload = _serialize_live_validation_status(status, include_checklist=True)
+    payload["live_validation_armed"] = bool(getattr(request.app.state, "live_validation_armed", False))
+    return payload
 
 
 @router.get("/paper/orders")
@@ -821,6 +1172,27 @@ def _resolve_run_dir(settings, run_dir_request: str | None) -> Path:
     if not candidate.is_dir():
         raise HTTPException(status_code=404, detail="run_dir not found")
     return candidate
+
+
+@router.get("/reports")
+def reports_index(request: Request) -> dict[str, Any]:
+    settings = request.app.state.settings
+    base = _reports_base(settings)
+    runs = []
+    if base.exists():
+        for path in sorted((p for p in base.iterdir() if p.is_dir()), reverse=True)[:20]:
+            runs.append({"run_dir": path.name})
+    latest = find_latest_run_dir(base)
+    return {
+        "runs": runs,
+        "latest_run": latest.name if latest else None,
+        "secret_exposed": False,
+    }
+
+
+@router.get("/reports/latest")
+def reports_latest_alias(request: Request) -> dict[str, Any]:
+    return reports_latest(request)
 
 
 @router.post("/reports/dry-run/analyze")

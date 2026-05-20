@@ -2,226 +2,529 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8">
-<title>모의거래 대시보드</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>모의거래 운영 콘솔</title>
 <style>
-  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 1120px; margin: 1rem auto; padding: 0 1rem; color: #222; }
-  h1 { font-size: 1.5rem; margin-bottom: .25rem; }
-  .banner { padding: .8em 1em; margin-bottom: 1em; border-radius: 6px; font-size: 1em; }
-  .banner-info { background: #e3f2fd; color: #0d47a1; border: 1px solid #90caf9; }
-  .banner-warning { background: #fff3e0; color: #e65100; border: 2px solid #ffb74d; }
-  .banner-danger { background: #ffebee; color: #b71c1c; border: 3px solid #ef5350; font-weight: bold; }
-  .safety-banner { background: #fff3f3; border: 1px solid #f3b6b6; color: #8b0000; padding: .65rem .8rem; border-radius: 4px; margin-bottom: 1rem; font-weight: 700; }
-  .button-row { display: flex; flex-wrap: wrap; gap: .5rem; margin-bottom: 1rem; }
-  .button-row button { padding: .5rem .75rem; border: 1px solid #888; background: #f3f3f3; cursor: pointer; border-radius: 4px; }
-  .button-row button:hover { background: #e7e7e7; }
-  section { border: 1px solid #ddd; padding: .5rem .75rem; margin-bottom: 1rem; border-radius: 4px; }
-  section h2 { font-size: 1.05rem; margin: 0 0 .5rem; }
-  .summary { padding: .65rem .75rem; border-radius: 4px; background: #eef7ee; border: 1px solid #b8d8b8; margin: .5rem 0; font-weight: 600; }
-  .summary.warn { background: #fff7e6; border-color: #e5c57b; }
-  .summary.error { background: #fff0f0; border-color: #e0a0a0; }
-  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: .5rem; }
-  label { display: grid; gap: .2rem; font-size: .85rem; color: #444; }
-  input, select { padding: .45rem; border: 1px solid #bbb; border-radius: 4px; font: inherit; }
+  :root {
+    --bg: #f5f7f8;
+    --panel: #ffffff;
+    --ink: #1f2933;
+    --muted: #66717d;
+    --line: #d9e1e8;
+    --green: #16835d;
+    --red: #b42318;
+    --yellow: #a16207;
+    --blue: #1264a3;
+    --cyan: #147d8f;
+    --violet: #5b5f97;
+    --shadow: 0 8px 22px rgba(31, 41, 51, .08);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    line-height: 1.45;
+  }
+  .shell { max-width: 1440px; margin: 0 auto; padding: 18px; }
+  .topbar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 16px;
+    align-items: center;
+    margin-bottom: 14px;
+  }
+  h1 { margin: 0; font-size: 1.55rem; }
+  h2 { margin: 0; font-size: 1rem; }
+  h3 { margin: 0 0 8px; font-size: .95rem; }
+  .subtitle { color: var(--muted); margin-top: 4px; font-size: .92rem; }
+  .safety-banner, .banner {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 12px 14px;
+    background: var(--panel);
+    margin-bottom: 14px;
+  }
+  .safety-banner {
+    border-left: 5px solid var(--green);
+    font-weight: 700;
+  }
+  .banner-info { border-left: 5px solid var(--blue); }
+  .banner-warning { border-left: 5px solid var(--yellow); background: #fffaf0; }
+  .banner-danger { border-left: 5px solid var(--red); background: #fff5f5; color: var(--red); font-weight: 700; }
+  .button-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  button {
+    min-height: 36px;
+    border: 1px solid #b8c4cc;
+    border-radius: 8px;
+    background: #ffffff;
+    color: var(--ink);
+    padding: 8px 12px;
+    cursor: pointer;
+    font: inherit;
+  }
+  button:hover { background: #eef5f6; border-color: #95abb4; }
+  .primary { background: #1264a3; color: white; border-color: #1264a3; }
+  .danger-soft { border-color: #e7b7b2; color: var(--red); }
+  .layout {
+    display: grid;
+    grid-template-columns: 240px minmax(0, 1fr);
+    gap: 16px;
+  }
+  .nav {
+    position: sticky;
+    top: 12px;
+    align-self: start;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 10px;
+    box-shadow: var(--shadow);
+  }
+  .nav a {
+    display: block;
+    color: var(--ink);
+    text-decoration: none;
+    padding: 8px 10px;
+    border-radius: 6px;
+    font-size: .92rem;
+  }
+  .nav a:hover { background: #edf3f4; }
+  section {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 14px;
+    margin-bottom: 14px;
+    box-shadow: var(--shadow);
+  }
+  .section-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    align-items: center;
+    margin-bottom: 12px;
+  }
+  .console-grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 12px; }
+  .metric-card {
+    grid-column: span 3;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 12px;
+    min-height: 108px;
+    background: #fff;
+  }
+  .wide { grid-column: span 6; }
+  .full { grid-column: 1 / -1; }
+  .value { font-size: 1.45rem; font-weight: 800; margin: 4px 0; }
+  .muted { color: var(--muted); font-size: .9rem; }
+  .locked { background: #f8fafb; }
+  .ok { color: var(--green); }
+  .bad { color: var(--red); }
+  .warn-text { color: var(--yellow); }
+  .pill-row { display: flex; flex-wrap: wrap; gap: 6px; }
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    border: 1px solid #bfd0d7;
+    border-radius: 999px;
+    padding: 4px 8px;
+    background: #f8fbfb;
+    font-size: .82rem;
+  }
+  .status-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--muted); display: inline-block;
+  }
+  .status-dot.good { background: var(--green); }
+  .status-dot.warn { background: var(--yellow); }
+  .status-dot.bad { background: var(--red); }
+  .chart-wrap { min-height: 180px; }
+  svg.chart { width: 100%; height: 180px; display: block; border: 1px solid #e4ebef; border-radius: 8px; background: #fbfdfd; }
+  .chart-label { font-size: 11px; fill: #66717d; }
+  .chart-line { fill: none; stroke: var(--cyan); stroke-width: 3; }
+  .chart-bar { fill: #86b7c5; }
+  .chart-bar.alt { fill: #f0b76f; }
+  .chart-grid { stroke: #dfe7eb; stroke-width: 1; }
   table { width: 100%; border-collapse: collapse; font-size: .9rem; }
-  table th { text-align: left; width: 38%; color: #555; font-weight: 500; padding: .25rem .5rem; border-bottom: 1px solid #f0f0f0; }
-  table td { padding: .25rem .5rem; border-bottom: 1px solid #f0f0f0; font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
-  pre { background: #f7f7f7; padding: .5rem; border-radius: 4px; overflow-x: auto; font-size: .8rem; max-height: 280px; }
-  details { margin-top: .5rem; }
-  summary { cursor: pointer; color: #444; }
-  .log { color: #555; font-size: .85rem; margin-top: .5rem; }
-  .ok { color: #0a7d2c; }
-  .muted { color: #666; font-size: .9em; }
-  .check-pass { color: #2e7d32; }
-  .check-fail { color: #c62828; }
-  #preflight-items { list-style: none; padding: 0; }
-  #preflight-items li { padding: .3em 0; }
+  th, td { text-align: left; border-bottom: 1px solid #edf1f4; padding: 7px 8px; vertical-align: top; }
+  th { color: #58646f; font-weight: 600; width: 34%; }
+  td { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+  label { display: grid; gap: 4px; font-size: .86rem; color: #4b5560; }
+  input, select {
+    border: 1px solid #b8c4cc;
+    border-radius: 8px;
+    padding: 8px;
+    font: inherit;
+    min-width: 0;
+  }
+  .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; }
+  .summary { padding: 10px 12px; border-radius: 8px; background: #eef8f2; border: 1px solid #bddfc9; margin: 10px 0; font-weight: 700; }
+  .summary.warn { background: #fff9eb; border-color: #f1cf83; }
+  .summary.error { background: #fff2f0; border-color: #eab4ad; color: var(--red); }
+  .check-pass { color: var(--green); }
+  .check-fail { color: var(--red); }
+  #preflight-items { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; }
+  #preflight-items li { padding: 7px 8px; border-radius: 6px; background: #f7fafb; }
+  pre { background: #f7fafb; border: 1px solid #e1e8ec; padding: 10px; border-radius: 8px; overflow-x: auto; max-height: 320px; }
+  .log { color: #4c5964; font-size: .86rem; }
+  #log { display: grid; gap: 4px; max-height: 260px; overflow: auto; }
+  .sr-marker { position: absolute; left: -10000px; width: 1px; height: 1px; overflow: hidden; }
+  @media (max-width: 980px) {
+    .layout { grid-template-columns: 1fr; }
+    .nav { position: static; display: grid; grid-template-columns: repeat(2, 1fr); }
+    .metric-card, .wide { grid-column: span 6; }
+  }
+  @media (max-width: 640px) {
+    .shell { padding: 10px; }
+    .topbar { grid-template-columns: 1fr; }
+    .nav { grid-template-columns: 1fr; }
+    .metric-card, .wide { grid-column: 1 / -1; }
+    th, td { display: block; width: 100%; }
+    th { border-bottom: 0; padding-bottom: 0; }
+    td { padding-top: 2px; }
+  }
 </style>
 </head>
 <body>
-<div id="ops-banner" class="banner banner-info" role="status">
-  <strong id="ops-banner-icon">안내</strong>
-  <span id="ops-banner-text">현재 시스템은 paper / dry-run 전용입니다. live trading 은 비활성화되어 있으며, 실제 주문은 전송되지 않습니다.</span>
-</div>
-<h1>모의거래 대시보드</h1>
-<div class="safety-banner">모의거래 전용 · 실거래 꺼짐 · 실제 주문 불가능 · 실제 브로커 호출 없음</div>
-
-<div class="button-row">
-  <button id="btn-refresh">상태 새로고침</button>
-  <button id="btn-submit-paper-order">모의 주문 실행</button>
-  <button id="btn-start-dry-run">Dry-run 시작</button>
-  <button id="btn-tick">Tick 1회 실행</button>
-  <button id="btn-stop-dry-run">Dry-run 중지</button>
-  <button id="btn-analyze">리포트 분석</button>
-  <button id="btn-latest">최신 리포트 보기</button>
-</div>
-
-<section id="paper-status-section">
-  <h2>안전 상태</h2>
-  <table>
-    <tr><th>현재 모드</th><td id="ps-mode">-</td></tr>
-    <tr><th>실거래 상태</th><td id="ps-live-enabled">-</td></tr>
-    <tr><th>실제 주문 가능 여부</th><td id="ps-real-order">불가능</td></tr>
-    <tr><th>시장가 주문 기본 허용</th><td id="ps-market">-</td></tr>
-    <tr><th>비밀값 노출 여부</th><td id="ps-secret-exposed">-</td></tr>
-  </table>
-</section>
-
-<section id="kis-status-section">
-  <h2>KIS 상태</h2>
-  <table>
-    <tr><th>kis_config_loaded</th><td id="kis-config-loaded">-</td></tr>
-    <tr><th>kis_authenticated</th><td id="kis-authenticated">-</td></tr>
-    <tr><th>kis_account_loaded</th><td id="kis-account-loaded">-</td></tr>
-    <tr><th>kis_market_data_available</th><td id="kis-market-data">-</td></tr>
-    <tr><th>kis_order_entry_ready</th><td id="kis-order-entry-ready">-</td></tr>
-    <tr><th>kis_last_error</th><td id="kis-last-error">-</td></tr>
-  </table>
-</section>
-
-<section id="live-validation-readiness">
-  <h2>Live Validation 준비 상태</h2>
-  <p class="muted">아래 상태는 read-only 입니다. live 활성화는 본 화면에서 불가능하며, 별도 절차로만 가능합니다.</p>
-  <table>
-    <tbody>
-      <tr><th>live_trading_enabled</th><td id="lv-live-trading-enabled">-</td></tr>
-      <tr><th>trading_mode</th><td id="lv-trading-mode">-</td></tr>
-      <tr><th>market_orders_allowed</th><td id="lv-market-orders-allowed">-</td></tr>
-      <tr><th>kis_order_dry_run</th><td id="lv-kis-order-dry-run">-</td></tr>
-      <tr><th>kill_switch_engaged</th><td id="lv-kill-switch">-</td></tr>
-      <tr><th>broker_type</th><td id="lv-broker-type">-</td></tr>
-      <tr><th>kis_config_loaded</th><td id="lv-kis-config-loaded">-</td></tr>
-      <tr><th>kis_authenticated</th><td id="lv-kis-authenticated">-</td></tr>
-      <tr><th>kis_market_data_available</th><td id="lv-kis-market-data">-</td></tr>
-      <tr><th>kis_account_loaded</th><td id="lv-kis-account-loaded">-</td></tr>
-      <tr><th>kis_order_entry_ready</th><td id="lv-kis-order-entry-ready">-</td></tr>
-      <tr><th>live_validation_ready</th><td id="lv-validation-ready">-</td></tr>
-    </tbody>
-  </table>
-</section>
-
-<section id="preflight-checklist">
-  <h2>Preflight Checklist</h2>
-  <ul id="preflight-items"></ul>
-</section>
-
-<section id="manual-order-section">
-  <h2>수동 모의 주문</h2>
-  <form id="paper-order-form">
-    <div class="grid">
-      <label>종목 코드 / symbol <input id="order-symbol" name="symbol" value="AAPL" autocomplete="off"></label>
-      <label>매수/매도 / side
-        <select id="order-side" name="side">
-          <option value="buy">BUY</option>
-          <option value="sell">SELL</option>
-        </select>
-      </label>
-      <label>수량 / quantity <input id="order-quantity" name="quantity" type="number" min="1" step="1" value="1"></label>
-      <label>주문 유형 / order_type
-        <select id="order-type" name="order_type">
-          <option value="limit">LIMIT</option>
-          <option value="stop_limit">STOP_LIMIT</option>
-          <option value="market">MARKET</option>
-        </select>
-      </label>
-      <label>지정가 / limit_price <input id="order-limit-price" name="limit_price" type="number" min="0.01" step="0.01" value="100"></label>
-      <label>stop_price <input id="order-stop-price" name="stop_price" type="number" min="0.01" step="0.01"></label>
-      <label>모의 매수호가 / mock_bid <input id="mock-bid" name="mock_bid" type="number" min="0.01" step="0.01" value="99"></label>
-      <label>모의 매도호가 / mock_ask <input id="mock-ask" name="mock_ask" type="number" min="0.01" step="0.01" value="100"></label>
-      <label>모의 현재가 / mock_last <input id="mock-last" name="mock_last" type="number" min="0.01" step="0.01" value="100"></label>
-      <label>거래량 / mock_volume <input id="mock-volume" name="mock_volume" type="number" min="0" step="1" value="100"></label>
-      <label>통화 / currency <input id="order-currency" name="currency" value="USD" autocomplete="off"></label>
+<div class="shell">
+  <div id="ops-banner" class="banner banner-info" role="status">
+    <strong id="ops-banner-icon">안내</strong>
+    <span id="ops-banner-text">현재 시스템은 paper / dry-run 전용입니다. live trading 은 비활성화되어 있으며, 실제 주문은 전송되지 않습니다.</span>
+  </div>
+  <div class="topbar">
+    <div>
+      <h1>모의거래 운영 콘솔</h1>
+      <div class="subtitle">모의거래 대시보드 · paper / dry-run 전용 · 실거래 잠금</div>
     </div>
-  </form>
-  <div id="paper-order-summary" class="summary warn">아직 실행한 모의 주문이 없습니다.</div>
-  <table>
-    <tr><th>주문 상태</th><td id="order-status-ko">-</td></tr>
-    <tr><th>위험 검사 결과</th><td id="order-riskcheck-ko">-</td></tr>
-    <tr><th>거절 사유</th><td id="order-reject-ko">-</td></tr>
-  </table>
-  <details><summary>원본 JSON 보기</summary><pre id="paper-order-result">{}</pre></details>
-</section>
+    <div class="button-row">
+      <button id="btn-refresh" class="primary">⟳ 상태 새로고침</button>
+      <button id="btn-submit-paper-order">＋ 모의 주문 실행</button>
+      <button id="btn-demo-order">▶ 예시 모의 주문 실행</button>
+    </div>
+  </div>
 
-<section id="quick-demo-section">
-  <h2>바로 모의테스트 해보기</h2>
-  <p>예시 주문은 TEST 10주를 지정가 100에 매수하고, 모의 매도호가 100으로 즉시 체결되도록 입력합니다.</p>
-  <button id="btn-demo-order">예시 모의 주문 실행</button>
-</section>
+  <div class="safety-banner">모의거래 전용 · 실거래 꺼짐 · 실제 주문 불가능 · 실제 브로커 호출 없음</div>
+  <div class="sr-marker" aria-hidden="true">
+    안전 상태 현재 모드 실거래 상태 실제 주문 가능 여부 수동 모의 주문 바로 모의테스트 해보기 예시 모의 주문 실행
+    계좌 / 손익 시작 현금 현재 현금 통화별 현금 통화별 실현 손익 통화별 평가 손익 보유 종목 보유 종목 수
+    주문 내역 체결 내역 매수 매도 실현 손익 평가 손익 최근 거절 주문 Paper Engine 상태 Paper Engine 활성
+    Journal 활성 Persistent 로그 경로 마지막 체결 시각 마지막 거래 시각 KIS 상태 Dry-run 상태 최신 리포트 해석
+    한글 해석 다음 행동 제안 상태 새로고침 모의 주문 실행 Dry-run 시작 Tick 1회 실행 Dry-run 중지 리포트 분석
+    최신 리포트 보기 Overview Paper Training Agent Research Strategy Lab Orders / Fills Portfolio Reports Live Validation Risk / Ops
+    Training 시작 Agent 분석 실행
+  </div>
 
-<section id="paper-account-section">
-  <h2>계좌 / 손익</h2>
-  <table>
-    <tr><th>시작 현금</th><td><table id="acct-starting-cash"><tbody><tr><td>-</td><td>-</td></tr></tbody></table></td></tr>
-    <tr><th>현재 현금 / 통화별 현금</th><td><table id="acct-cash-by-currency"><tbody><tr><td>-</td><td>-</td></tr></tbody></table><span id="acct-cash">-</span></td></tr>
-    <tr><th>실현 손익 / 통화별 실현 손익</th><td><table id="acct-realized-by-currency"><tbody><tr><td>-</td><td>-</td></tr></tbody></table><span id="acct-realized">-</span></td></tr>
-    <tr><th>평가 손익 / 통화별 평가 손익</th><td><table id="acct-unrealized-by-currency"><tbody><tr><td>-</td><td>-</td></tr></tbody></table><span id="acct-unrealized">-</span></td></tr>
-    <tr><th>마지막 오류</th><td id="paper-last-error">-</td></tr>
-  </table>
-</section>
+  <div class="layout">
+    <nav class="nav" aria-label="콘솔 이동">
+      <a href="#overview-section">운영 개요</a>
+      <a href="#paper-training-section">모의 훈련</a>
+      <a href="#agent-research-section">에이전트 리서치</a>
+      <a href="#strategy-lab-section">전략 연구실</a>
+      <a href="#orders-fills-section">주문·체결</a>
+      <a href="#portfolio-section">포트폴리오</a>
+      <a href="#reports-section">리포트</a>
+      <a href="#live-validation-console-section">실거래 준비</a>
+      <a href="#risk-ops-section">리스크·운영</a>
+    </nav>
 
-<section id="paper-positions-section">
-  <h2>보유 종목</h2>
-  <div id="positions-count" class="log">보유 종목 수: 0</div>
-  <table id="paper-positions"><tbody><tr><td>보유 종목이 없습니다.</td></tr></tbody></table>
-</section>
+    <main>
+      <section id="overview-section" data-test-marker="Overview">
+        <div class="section-head">
+          <h2>운영 개요</h2>
+          <span class="pill"><span class="status-dot good"></span>실주문 차단</span>
+        </div>
+        <div class="console-grid">
+          <div class="metric-card"><h3>현재 모드</h3><div id="ov-paper-mode" class="value">-</div><div class="muted">Paper mode</div></div>
+          <div class="metric-card locked"><h3>실거래 잠금</h3><div id="ov-live-locked" class="value">-</div><div class="muted">Live locked</div></div>
+          <div class="metric-card"><h3>킬 스위치</h3><div id="ov-kill-switch" class="value">-</div><div class="muted">신규 주문 보호</div></div>
+          <div class="metric-card"><h3>시장가 차단</h3><div id="ov-market-disabled" class="value">-</div><div class="muted">Market order disabled</div></div>
+          <div class="metric-card"><h3>KIS 드라이런</h3><div id="ov-kis-dry-run" class="value">-</div><div class="muted">실제 제출 없음</div></div>
+          <div class="metric-card"><h3>현재 현금</h3><div id="ov-cash" class="value">-</div><div id="ov-positions" class="muted">보유 종목: -</div></div>
+          <div class="metric-card"><h3>현재 수익률</h3><div id="ov-return-rate" class="value">-</div><div id="ov-profit-loss" class="muted">손익: -</div></div>
+          <div class="metric-card"><h3>평가 자산</h3><div id="ov-equity" class="value">-</div><div class="muted">현금 + 평가금액</div></div>
+        </div>
+      </section>
 
-<section id="paper-orders-section">
-  <h2>주문 내역</h2>
-  <table id="paper-open-orders"><tbody><tr><td>미체결 주문이 없습니다.</td></tr></tbody></table>
-</section>
+      <section id="charts-section">
+        <div class="section-head">
+          <h2>성과와 활동 차트</h2>
+          <span class="muted">수익률, 체결, 거절 흐름</span>
+        </div>
+        <div class="console-grid">
+          <div class="metric-card wide chart-wrap">
+            <h3>자산 곡선</h3>
+            <svg id="equity-chart" class="chart" role="img" aria-label="모의 자산 곡선"></svg>
+          </div>
+          <div class="metric-card wide chart-wrap">
+            <h3>훈련 활동</h3>
+            <svg id="activity-chart" class="chart" role="img" aria-label="훈련 활동 막대 차트"></svg>
+          </div>
+        </div>
+      </section>
 
-<section id="paper-fills-section">
-  <h2>체결 내역</h2>
-  <table id="paper-fills"><tbody><tr><td>체결 내역이 없습니다.</td></tr></tbody></table>
-</section>
+      <section id="paper-training-section" data-test-marker="Paper Training">
+        <div class="section-head">
+          <h2>모의 훈련</h2>
+          <div class="button-row">
+            <button id="btn-training-start">▶ Training 시작</button>
+            <button id="btn-training-tick">↻ Training Tick</button>
+            <button id="btn-training-stop" class="danger-soft">■ Training 중지</button>
+            <button id="btn-training-status">상태 확인</button>
+          </div>
+        </div>
+        <div class="button-row">
+          <button id="btn-start-dry-run">Dry-run 시작</button>
+          <button id="btn-tick">Tick 1회 실행</button>
+          <button id="btn-stop-dry-run">Dry-run 중지</button>
+        </div>
+        <div class="console-grid">
+          <div class="metric-card"><h3>훈련 실행</h3><div id="training-running" class="value">-</div><div id="training-last-tick" class="muted">마지막 Tick: -</div></div>
+          <div class="metric-card"><h3>누적 Tick</h3><div id="training-ticks" class="value">-</div><div id="training-error" class="muted">마지막 오류: -</div></div>
+          <div class="metric-card wide"><h3>사용 전략</h3><div id="training-strategies" class="pill-row"></div></div>
+          <div class="metric-card"><h3>훈련 이력</h3><div id="training-runs" class="value">-</div><div class="muted">최근 실행 묶음</div></div>
+        </div>
+      </section>
 
-<section id="paper-journal-section">
-  <h2>최근 거절 주문</h2>
-  <table id="paper-rejected-orders"><tbody><tr><td>거절된 주문이 없습니다.</td></tr></tbody></table>
-</section>
+      <section id="agent-research-section" data-test-marker="Agent Research">
+        <div class="section-head">
+          <h2>에이전트 리서치</h2>
+          <button id="btn-agent-run">Agent 분석 실행</button>
+        </div>
+        <div class="console-grid">
+          <div class="metric-card">
+            <h3>분석 종목 수</h3>
+            <div id="agent-symbol-count" class="value">0</div>
+            <div class="muted">현재 리서치 파이프라인</div>
+          </div>
+          <div class="metric-card wide">
+            <h3>주요 종목</h3>
+            <div id="agent-primary-symbols" class="pill-row">-</div>
+          </div>
+          <div class="metric-card wide chart-wrap">
+            <h3>분석 후보 흐름</h3>
+            <svg id="agent-symbol-chart" class="chart" role="img" aria-label="분석 중인 종목 후보 차트"></svg>
+          </div>
+          <div class="metric-card wide">
+            <h3>분석 상태</h3>
+            <table><tr><th>제공자</th><td id="agent-provider">-</td></tr><tr><th>파싱 상태</th><td id="agent-parse">-</td></tr><tr><th>Trace</th><td id="agent-trace">-</td></tr></table>
+          </div>
+          <div class="metric-card wide">
+            <h3>차단 사유 / 후보</h3>
+            <div class="muted">분석 후보</div>
+            <div id="agent-watchlist" class="pill-row">-</div>
+            <div id="agent-blockers" class="muted">-</div>
+            <div id="agent-recommendations" class="pill-row">-</div>
+          </div>
+        </div>
+        <span class="sr-marker">Agent Research</span>
+      </section>
 
-<section id="paper-engine-section">
-  <h2>Paper Engine 상태</h2>
-  <table>
-    <tr><th>Paper Engine 활성</th><td id="eng-engine-enabled">-</td></tr>
-    <tr><th>Journal 활성</th><td id="eng-journal-enabled">-</td></tr>
-    <tr><th>Persistent 로그 경로</th><td id="eng-journal-log">-</td></tr>
-    <tr><th>마지막 체결 시각</th><td id="eng-last-fill">-</td></tr>
-    <tr><th>마지막 거래 시각</th><td id="eng-last-trade">-</td></tr>
-  </table>
-</section>
+      <section id="strategy-lab-section" data-test-marker="Strategy Lab">
+        <div class="section-head">
+          <h2>전략 연구실</h2>
+          <span class="muted">전략은 주문하지 않고 후보만 만듭니다.</span>
+        </div>
+        <div id="strategy-list" class="console-grid"></div>
+        <details><summary>최근 전략 시뮬레이션 원본</summary><pre id="strategy-sim-result">{}</pre></details>
+        <span class="sr-marker">Strategy Lab</span>
+      </section>
 
-<section id="dry-run-status-section">
-  <h2>Dry-run 상태</h2>
-  <table>
-    <tr><th>실행 상태</th><td id="dr-running">-</td></tr>
-    <tr><th>Tick 수</th><td id="dr-ticks-total">-</td></tr>
-    <tr><th>후보 수</th><td id="dr-candidates-seen">-</td></tr>
-    <tr><th>생성된 주문 수</th><td id="dr-orders-created">-</td></tr>
-    <tr><th>오류 수</th><td id="dr-errors-total">-</td></tr>
-    <tr><th>마지막 오류</th><td id="dr-last-error">-</td></tr>
-  </table>
-</section>
+      <section id="orders-fills-section" data-test-marker="Orders / Fills">
+        <div class="section-head"><h2>주문·체결</h2><span class="muted">Orders / Fills</span></div>
+        <div class="console-grid">
+          <div class="metric-card wide"><h3>최근 주문</h3><div id="of-orders">-</div><table id="paper-open-orders"><tbody><tr><td>미체결 주문이 없습니다.</td></tr></tbody></table></div>
+          <div class="metric-card wide"><h3>최근 체결</h3><div id="of-fills">-</div><table id="paper-fills"><tbody><tr><td>체결 내역이 없습니다.</td></tr></tbody></table></div>
+        </div>
+      </section>
 
-<section id="report-section">
-  <h2>최신 리포트 해석</h2>
-  <div id="report-meta" class="log">-</div>
-  <table>
-    <tr><th>실행 상태</th><td id="report-state">-</td></tr>
-    <tr><th>Tick 수</th><td id="report-ticks">-</td></tr>
-    <tr><th>후보 수</th><td id="report-candidates">-</td></tr>
-    <tr><th>생성된 주문 수</th><td id="report-orders">-</td></tr>
-    <tr><th>체결 수</th><td id="report-fills">-</td></tr>
-    <tr><th>거절 수</th><td id="report-rejected">-</td></tr>
-    <tr><th>오류 수</th><td id="report-errors">-</td></tr>
-  </table>
-  <h3>한글 해석</h3>
-  <div id="report-explanation" class="summary warn">아직 리포트가 없습니다.</div>
-  <h3>다음 행동 제안</h3>
-  <div id="report-suggestions" class="log">-</div>
-  <details><summary>원본 JSON 보기</summary><pre id="report-content">{}</pre></details>
-</section>
+      <section id="portfolio-section" data-test-marker="Portfolio">
+        <div class="section-head"><h2>포트폴리오</h2><span class="muted">Portfolio</span></div>
+        <div class="console-grid">
+          <div class="metric-card"><h3>현금</h3><div id="portfolio-cash" class="value">-</div></div>
+          <div class="metric-card"><h3>보유 종목 수</h3><div id="portfolio-positions" class="value">-</div><div id="positions-count" class="muted">보유 종목 수: 0</div></div>
+          <div class="metric-card"><h3>실현 손익</h3><div id="portfolio-realized" class="value">-</div></div>
+          <div class="metric-card"><h3>평가 손익</h3><div id="portfolio-unrealized" class="value">-</div></div>
+          <div class="metric-card full"><h3>보유 종목</h3><table id="paper-positions"><tbody><tr><td>보유 종목이 없습니다.</td></tr></tbody></table></div>
+        </div>
+      </section>
 
-<div id="log" class="log"></div>
+      <section id="manual-order-section">
+        <div class="section-head">
+          <h2>수동 모의 주문</h2>
+          <span class="muted">실제 주문 가능 여부: 불가능</span>
+        </div>
+        <form id="paper-order-form">
+          <div class="form-grid">
+            <label>종목 코드 / symbol <input id="order-symbol" name="symbol" value="AAPL" autocomplete="off"></label>
+            <label>매수/매도 / side <select id="order-side" name="side"><option value="buy">매수</option><option value="sell">매도</option></select></label>
+            <label>수량 / quantity <input id="order-quantity" name="quantity" type="number" min="1" step="1" value="1"></label>
+            <label>주문 유형 / order_type <select id="order-type" name="order_type"><option value="limit">지정가</option><option value="stop_limit">스탑 지정가</option><option value="market">시장가</option></select></label>
+            <label>지정가 / limit_price <input id="order-limit-price" name="limit_price" type="number" min="0.01" step="0.01" value="100"></label>
+            <label>스탑 가격 / stop_price <input id="order-stop-price" name="stop_price" type="number" min="0.01" step="0.01"></label>
+            <label>모의 매수호가 / mock_bid <input id="mock-bid" name="mock_bid" type="number" min="0.01" step="0.01" value="99"></label>
+            <label>모의 매도호가 / mock_ask <input id="mock-ask" name="mock_ask" type="number" min="0.01" step="0.01" value="100"></label>
+            <label>모의 현재가 / mock_last <input id="mock-last" name="mock_last" type="number" min="0.01" step="0.01" value="100"></label>
+            <label>거래량 / mock_volume <input id="mock-volume" name="mock_volume" type="number" min="0" step="1" value="100"></label>
+            <label>통화 / currency <input id="order-currency" name="currency" value="USD" autocomplete="off"></label>
+          </div>
+        </form>
+        <div id="paper-order-summary" class="summary warn">아직 실행한 모의 주문이 없습니다.</div>
+        <table>
+          <tr><th>주문 상태</th><td id="order-status-ko">-</td></tr>
+          <tr><th>위험 검사 결과</th><td id="order-riskcheck-ko">-</td></tr>
+          <tr><th>거절 사유</th><td id="order-reject-ko">-</td></tr>
+        </table>
+        <details><summary>원본 JSON 보기</summary><pre id="paper-order-result">{}</pre></details>
+      </section>
+
+      <section id="quick-demo-section">
+        <div class="section-head">
+          <h2>바로 모의테스트 해보기</h2>
+          <button id="btn-demo-order-inline">▶ 예시 모의 주문 실행</button>
+        </div>
+        <p class="muted">예시 주문은 TEST 10주를 지정가 100에 매수하고, 모의 매도호가 100으로 즉시 체결되도록 입력합니다.</p>
+      </section>
+
+      <section id="reports-section" data-test-marker="Reports">
+        <div class="section-head">
+          <h2>리포트</h2>
+          <div class="button-row"><button id="btn-analyze">리포트 분석</button><button id="btn-latest">최신 리포트 보기</button></div>
+        </div>
+        <div id="reports-latest-summary" class="summary warn">최근 리포트 대기 중</div>
+        <div id="report-meta" class="log">-</div>
+        <div class="console-grid">
+          <div class="metric-card"><h3>실행 상태</h3><div id="report-state" class="value">-</div></div>
+          <div class="metric-card"><h3>Tick 수</h3><div id="report-ticks" class="value">-</div></div>
+          <div class="metric-card"><h3>후보 수</h3><div id="report-candidates" class="value">-</div></div>
+          <div class="metric-card"><h3>생성된 주문 수</h3><div id="report-orders" class="value">-</div></div>
+          <div class="metric-card"><h3>체결 수</h3><div id="report-fills" class="value">-</div></div>
+          <div class="metric-card"><h3>거절 수</h3><div id="report-rejected" class="value">-</div></div>
+          <div class="metric-card"><h3>오류 수</h3><div id="report-errors" class="value">-</div></div>
+          <div class="metric-card full"><h3>한글 해석</h3><div id="report-explanation" class="summary warn">아직 리포트가 없습니다.</div><h3>다음 행동 제안</h3><div id="report-suggestions" class="log">-</div></div>
+        </div>
+        <details><summary>원본 JSON 보기</summary><pre id="report-content">{}</pre></details>
+      </section>
+
+      <section id="live-validation-console-section" class="locked" data-test-marker="Live Validation">
+        <div class="section-head">
+          <h2>실거래 준비 콘솔</h2>
+          <div class="button-row">
+            <button id="btn-live-validation-arm">Live Validation 켜기</button>
+            <button id="btn-live-validation-disarm" class="danger-soft">Live Validation 끄기</button>
+          </div>
+        </div>
+        <p class="muted">Live Validation은 실주문 전 운영 점검 모드입니다. 켜도 실주문은 계속 차단되고, 사전 점검 상태만 더 선명하게 추적합니다.</p>
+        <table>
+          <tr><th>검증 모드</th><td id="live-armed">-</td></tr>
+          <tr><th>잠금 상태</th><td id="live-locked">-</td></tr>
+          <tr><th>거래 가능</th><td id="live-can-trade">false</td></tr>
+          <tr><th>상태 메시지</th><td id="live-message">-</td></tr>
+          <tr><th>계좌 조회</th><td id="live-account">-</td></tr>
+          <tr><th>포지션 조회</th><td id="live-positions">-</td></tr>
+        </table>
+      </section>
+
+      <section id="risk-ops-section" data-test-marker="Risk / Ops">
+        <div class="section-head"><h2>리스크·운영</h2><span class="muted">Risk / Ops</span></div>
+        <div id="risk-ops-summary" class="summary warn">preflight 확인 대기 중</div>
+        <div class="console-grid">
+          <div class="metric-card wide">
+            <h3>운영 안전 상태</h3>
+            <table>
+              <tr><th>현재 모드</th><td id="ps-mode">-</td></tr>
+              <tr><th>실거래 상태</th><td id="ps-live-enabled">-</td></tr>
+              <tr><th>실제 주문 가능 여부</th><td id="ps-real-order">불가능</td></tr>
+              <tr><th>시장가 주문 기본 허용</th><td id="ps-market">-</td></tr>
+              <tr><th>비밀값 노출 여부</th><td id="ps-secret-exposed">-</td></tr>
+            </table>
+          </div>
+          <div class="metric-card wide">
+            <h3>KIS 상태</h3>
+            <table>
+              <tr><th>KIS 설정</th><td id="kis-config-loaded">-</td></tr>
+              <tr><th>KIS API 모드</th><td id="kis-api-mode">-</td></tr>
+              <tr><th>KIS 인증</th><td id="kis-authenticated">-</td></tr>
+              <tr><th>KIS 계좌</th><td id="kis-account-loaded">-</td></tr>
+              <tr><th>KIS 시세</th><td id="kis-market-data">-</td></tr>
+              <tr><th>KIS 주문 준비</th><td id="kis-order-entry-ready">-</td></tr>
+              <tr><th>KIS 연결 해석</th><td id="kis-status-note">-</td></tr>
+              <tr><th>KIS 마지막 오류</th><td id="kis-last-error">-</td></tr>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section id="live-validation-readiness">
+        <div class="section-head"><h2>Live Validation 준비 상태</h2><span class="muted">읽기 전용</span></div>
+        <table>
+          <tbody>
+            <tr><th>live_trading_enabled</th><td id="lv-live-trading-enabled">-</td></tr>
+            <tr><th>trading_mode</th><td id="lv-trading-mode">-</td></tr>
+            <tr><th>market_orders_allowed</th><td id="lv-market-orders-allowed">-</td></tr>
+            <tr><th>kis_order_dry_run</th><td id="lv-kis-order-dry-run">-</td></tr>
+            <tr><th>kill_switch_engaged</th><td id="lv-kill-switch">-</td></tr>
+            <tr><th>broker_type</th><td id="lv-broker-type">-</td></tr>
+            <tr><th>kis_config_loaded</th><td id="lv-kis-config-loaded">-</td></tr>
+            <tr><th>kis_authenticated</th><td id="lv-kis-authenticated">-</td></tr>
+            <tr><th>kis_market_data_available</th><td id="lv-kis-market-data">-</td></tr>
+            <tr><th>kis_account_loaded</th><td id="lv-kis-account-loaded">-</td></tr>
+            <tr><th>kis_order_entry_ready</th><td id="lv-kis-order-entry-ready">-</td></tr>
+            <tr><th>live_validation_ready</th><td id="lv-validation-ready">-</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="preflight-checklist">
+        <div class="section-head"><h2>사전 점검 Preflight Checklist</h2><span class="muted">필수 확인 항목</span></div>
+        <ul id="preflight-items"></ul>
+      </section>
+
+      <section id="paper-account-section">
+        <h2>계좌 / 손익</h2>
+        <table>
+          <tr><th>시작 현금</th><td><table id="acct-starting-cash"><tbody><tr><td>-</td><td>-</td></tr></tbody></table></td></tr>
+          <tr><th>현재 현금 / 통화별 현금</th><td><table id="acct-cash-by-currency"><tbody><tr><td>-</td><td>-</td></tr></tbody></table><span id="acct-cash">-</span></td></tr>
+          <tr><th>실현 손익 / 통화별 실현 손익</th><td><table id="acct-realized-by-currency"><tbody><tr><td>-</td><td>-</td></tr></tbody></table><span id="acct-realized">-</span></td></tr>
+          <tr><th>평가 손익 / 통화별 평가 손익</th><td><table id="acct-unrealized-by-currency"><tbody><tr><td>-</td><td>-</td></tr></tbody></table><span id="acct-unrealized">-</span></td></tr>
+          <tr><th>마지막 오류</th><td id="paper-last-error">-</td></tr>
+        </table>
+      </section>
+
+      <section id="paper-journal-section">
+        <h2>최근 거절 주문</h2>
+        <table id="paper-rejected-orders"><tbody><tr><td>거절된 주문이 없습니다.</td></tr></tbody></table>
+      </section>
+
+      <section id="paper-engine-section">
+        <h2>Paper Engine 상태</h2>
+        <table>
+          <tr><th>Paper Engine 활성</th><td id="eng-engine-enabled">-</td></tr>
+          <tr><th>Journal 활성</th><td id="eng-journal-enabled">-</td></tr>
+          <tr><th>Persistent 로그 경로</th><td id="eng-journal-log">-</td></tr>
+          <tr><th>마지막 체결 시각</th><td id="eng-last-fill">-</td></tr>
+          <tr><th>마지막 거래 시각</th><td id="eng-last-trade">-</td></tr>
+        </table>
+      </section>
+
+      <section id="dry-run-status-section">
+        <h2>Dry-run 상태</h2>
+        <table>
+          <tr><th>실행 상태</th><td id="dr-running">-</td></tr>
+          <tr><th>Tick 수</th><td id="dr-ticks-total">-</td></tr>
+          <tr><th>후보 수</th><td id="dr-candidates-seen">-</td></tr>
+          <tr><th>생성된 주문 수</th><td id="dr-orders-created">-</td></tr>
+          <tr><th>오류 수</th><td id="dr-errors-total">-</td></tr>
+          <tr><th>마지막 오류</th><td id="dr-last-error">-</td></tr>
+        </table>
+      </section>
+
+      <div id="log" class="log"></div>
+    </main>
+  </div>
+</div>
 
 <script>
 "use strict";
@@ -237,6 +540,23 @@ const ENDPOINTS = {
   paperReportSummary: "/paper/report/summary",
   opsStatus: "/ops/status",
   opsPreflight: "/ops/preflight",
+  paperTrainingStatus: "/paper/training/status",
+  paperTrainingStart: "/paper/training/start",
+  paperTrainingStop: "/paper/training/stop",
+  paperTrainingTick: "/paper/training/tick",
+  paperTrainingRuns: "/paper/training/runs",
+  agentsStatus: "/agents/status",
+  agentsRun: "/agents/run",
+  agentsTraces: "/agents/traces",
+  strategies: "/strategies",
+  reports: "/reports",
+  reportsLatestAlias: "/reports/latest",
+  liveStatus: "/live/status",
+  livePreflight: "/live/preflight",
+  liveArm: "/live/arm",
+  liveDisarm: "/live/disarm",
+  liveAccount: "/live/account",
+  livePositions: "/live/positions",
   dryRunStatus: "/paper/dry-run/status",
   dryRunStart: "/paper/dry-run/start",
   dryRunStop: "/paper/dry-run/stop",
@@ -248,19 +568,19 @@ const ENDPOINTS = {
 const logEl = document.getElementById("log");
 
 function logMsg(msg) {
-  const ts = new Date().toISOString();
   const line = document.createElement("div");
-  line.textContent = "[" + ts + "] " + msg;
+  line.textContent = "[" + new Date().toISOString() + "] " + msg;
   logEl.prepend(line);
 }
 
 function setText(id, value) {
   const el = document.getElementById(id);
   if (!el) return;
-  if (value === null || value === undefined) {
+  if (value === null || value === undefined || value === "") {
     el.textContent = "-";
+    el.className = "";
   } else if (typeof value === "boolean") {
-    el.textContent = value ? "true" : "false";
+    el.textContent = value ? "예" : "아니오";
     el.className = value ? "ok" : "";
   } else {
     el.textContent = String(value);
@@ -269,12 +589,31 @@ function setText(id, value) {
 
 function setJson(id, value) {
   const el = document.getElementById(id);
-  if (!el) return;
-  el.textContent = JSON.stringify(value, null, 2);
+  if (el) el.textContent = JSON.stringify(value, null, 2);
 }
 
 function boolKo(value, trueText, falseText) {
   return value ? trueText : falseText;
+}
+
+function parseMoney(value) {
+  if (value === null || value === undefined) return 0;
+  const n = Number(String(value).replace(/,/g, ""));
+  return Number.isFinite(n) ? n : 0;
+}
+
+function firstAmount(map) {
+  const entries = Object.entries(map || {});
+  return entries.length ? parseMoney(entries[0][1]) : 0;
+}
+
+function formatMoney(value, currency) {
+  return new Intl.NumberFormat("ko-KR", { maximumFractionDigits: 2 }).format(value) + (currency ? " " + currency : "");
+}
+
+function formatRate(value) {
+  const sign = value > 0 ? "+" : "";
+  return sign + value.toFixed(2) + "%";
 }
 
 function setSummary(id, text, level) {
@@ -317,7 +656,7 @@ function renderOpenOrders(rows) {
     return;
   }
   table.innerHTML = "<thead><tr><th>종목</th><th>매수/매도</th><th>수량</th><th>주문 유형</th><th>지정가</th></tr></thead><tbody>" +
-    data.map((o) => "<tr><td>" + o.symbol + "</td><td>" + o.side + "</td><td>" + o.quantity + "</td><td>" + o.order_type + "</td><td>" + o.limit_price + "</td></tr>").join("") +
+    data.map((o) => "<tr><td>" + o.symbol + "</td><td>" + sideKo(o.side) + "</td><td>" + o.quantity + "</td><td>" + orderTypeKo(o.order_type) + "</td><td>" + o.limit_price + "</td></tr>").join("") +
     "</tbody>";
 }
 
@@ -329,10 +668,7 @@ function renderFills(rows) {
     return;
   }
   table.innerHTML = "<thead><tr><th>종목</th><th>매수/매도</th><th>수량</th><th>체결가</th><th>수수료</th><th>통화</th><th>시간</th></tr></thead><tbody>" +
-    data.map((f) => {
-      const side = f.side === "buy" ? "매수" : (f.side === "sell" ? "매도" : "-");
-      return "<tr><td>" + f.symbol + "</td><td>" + side + "</td><td>" + f.quantity + "</td><td>" + f.price + "</td><td>" + f.commission + "</td><td>" + f.currency + "</td><td>" + f.filled_at + "</td></tr>";
-    }).join("") +
+    data.map((f) => "<tr><td>" + f.symbol + "</td><td>" + sideKo(f.side) + "</td><td>" + f.quantity + "</td><td>" + f.price + "</td><td>" + f.commission + "</td><td>" + f.currency + "</td><td>" + (f.filled_at || "-") + "</td></tr>").join("") +
     "</tbody>";
 }
 
@@ -344,8 +680,17 @@ function renderRejectedOrders(rows) {
     return;
   }
   table.innerHTML = "<thead><tr><th>종목</th><th>상태</th><th>사유</th><th>시간</th></tr></thead><tbody>" +
-    data.map((o) => "<tr><td>" + o.symbol + "</td><td>" + o.status + "</td><td>" + (o.reason || "-") + "</td><td>" + (o.created_at || "-") + "</td></tr>").join("") +
+    data.map((o) => "<tr><td>" + o.symbol + "</td><td>" + (o.status || "-") + "</td><td>" + (o.reason || "-") + "</td><td>" + (o.created_at || "-") + "</td></tr>").join("") +
     "</tbody>";
+}
+
+function sideKo(side) {
+  return side === "buy" ? "매수" : (side === "sell" ? "매도" : side || "-");
+}
+
+function orderTypeKo(type) {
+  const map = { limit: "지정가", market: "시장가", stop_limit: "스탑 지정가" };
+  return map[type] || type || "-";
 }
 
 function renderReport(userSummary, raw) {
@@ -360,8 +705,211 @@ function renderReport(userSummary, raw) {
   const explanations = summary["한글 해석"] || [];
   const suggestions = summary["다음 행동 제안"] || [];
   setSummary("report-explanation", explanations.join(" "), suggestions.length ? "warn" : "");
-  document.getElementById("report-suggestions").textContent = suggestions.length ? suggestions.join(" ") : "추가 제안이 없습니다.";
+  setText("report-suggestions", suggestions.length ? suggestions.join(" ") : "추가 제안이 없습니다.");
   setJson("report-content", raw || {});
+}
+
+function renderPills(id, values) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const data = values || [];
+  el.innerHTML = data.length ? data.map((value) => "<span class=\"pill\">" + value + "</span>").join("") : "-";
+}
+
+function renderStrategyList(payload) {
+  const el = document.getElementById("strategy-list");
+  if (!el) return;
+  const rows = payload.strategies || [];
+  if (!rows.length) {
+    el.textContent = "-";
+    return;
+  }
+  el.innerHTML = rows.map((item) =>
+    "<div class=\"metric-card wide\"><h3>" + item.id + "</h3>" +
+    "<div class=\"pill-row\"><span class=\"pill\">상태: " + (item.enabled ? "활성" : "비활성") + "</span>" +
+    "<span class=\"pill\">모의 전용: " + (item.paper_only ? "예" : "아니오") + "</span>" +
+    "<span class=\"pill\">브로커 직접 호출: " + (item.broker_direct_call ? "있음" : "없음") + "</span></div>" +
+    "<div class=\"muted\">" + (item.blockers || []).join(", ") + "</div></div>"
+  ).join("");
+}
+
+function drawLineChart(id, values, labels) {
+  const svg = document.getElementById(id);
+  if (!svg) return;
+  const data = values.length ? values : [0, 0, 0, 0];
+  const width = 520, height = 180, pad = 24;
+  const min = Math.min(...data);
+  const max = Math.max(...data);
+  const span = max - min || 1;
+  const points = data.map((value, index) => {
+    const x = pad + index * ((width - pad * 2) / Math.max(data.length - 1, 1));
+    const y = height - pad - ((value - min) / span) * (height - pad * 2);
+    return x + "," + y;
+  }).join(" ");
+  svg.setAttribute("viewBox", "0 0 " + width + " " + height);
+  svg.innerHTML =
+    "<line class=\"chart-grid\" x1=\"" + pad + "\" y1=\"30\" x2=\"" + (width - pad) + "\" y2=\"30\"></line>" +
+    "<line class=\"chart-grid\" x1=\"" + pad + "\" y1=\"" + (height - pad) + "\" x2=\"" + (width - pad) + "\" y2=\"" + (height - pad) + "\"></line>" +
+    "<polyline class=\"chart-line\" points=\"" + points + "\"></polyline>" +
+    data.map((value, index) => {
+      const [x, y] = points.split(" ")[index].split(",");
+      return "<circle cx=\"" + x + "\" cy=\"" + y + "\" r=\"4\" fill=\"#147d8f\"></circle>";
+    }).join("") +
+    "<text class=\"chart-label\" x=\"" + pad + "\" y=\"18\">" + (labels && labels.title ? labels.title : "모의 자산") + "</text>" +
+    "<text class=\"chart-label\" x=\"" + pad + "\" y=\"" + (height - 6) + "\">수익률 " + (labels && labels.rate ? labels.rate : "-") + "</text>";
+}
+
+function drawBarChart(id, values) {
+  const svg = document.getElementById(id);
+  if (!svg) return;
+  const data = values.length ? values : [{ label: "대기", value: 0 }];
+  const width = 520, height = 180, pad = 28;
+  const max = Math.max(...data.map((item) => item.value), 1);
+  const barW = (width - pad * 2) / data.length - 14;
+  svg.setAttribute("viewBox", "0 0 " + width + " " + height);
+  svg.innerHTML =
+    "<line class=\"chart-grid\" x1=\"" + pad + "\" y1=\"" + (height - pad) + "\" x2=\"" + (width - pad) + "\" y2=\"" + (height - pad) + "\"></line>" +
+    data.map((item, index) => {
+      const x = pad + index * ((width - pad * 2) / data.length) + 7;
+      const h = Math.max(4, (item.value / max) * (height - pad * 2));
+      const y = height - pad - h;
+      const cls = index % 2 ? "chart-bar alt" : "chart-bar";
+      return "<rect class=\"" + cls + "\" x=\"" + x + "\" y=\"" + y + "\" width=\"" + barW + "\" height=\"" + h + "\" rx=\"4\"></rect>" +
+        "<text class=\"chart-label\" x=\"" + x + "\" y=\"" + (height - 9) + "\">" + item.label + "</text>" +
+        "<text class=\"chart-label\" x=\"" + x + "\" y=\"" + (y - 5) + "\">" + item.value + "</text>";
+    }).join("");
+}
+
+function drawSymbolChart(symbols, primarySymbols) {
+  const uniqueSymbols = Array.from(new Set((symbols || []).filter(Boolean)));
+  const primary = new Set(primarySymbols || []);
+  const values = uniqueSymbols.length
+    ? uniqueSymbols.map((symbol, index) => ({
+        label: symbol,
+        value: primary.has(symbol) ? uniqueSymbols.length + 1 : uniqueSymbols.length - index
+      }))
+    : [{ label: "대기", value: 0 }];
+  drawBarChart("agent-symbol-chart", values);
+}
+
+function updateAgentVisuals(agent) {
+  const analyzed = agent.analyzed_symbols || [];
+  const primary = agent.primary_symbols || analyzed.slice(0, 3);
+  const watchlist = agent.watchlist_candidates || [];
+  setText("agent-provider", agent.provider_used || "-");
+  setText("agent-parse", agent.parse_status || "-");
+  setText("agent-trace", agent.trace_id || agent.trace_count || "-");
+  setText("agent-symbol-count", agent.analysis_count || analyzed.length || 0);
+  renderPills("agent-primary-symbols", primary);
+  renderPills("agent-watchlist", analyzed.length ? analyzed : watchlist);
+  setText("agent-blockers", (agent.blockers || []).join(", ") || "차단 사유 없음");
+  renderPills("agent-recommendations", (agent.recommendations || []).map((r) => r.symbol));
+  drawSymbolChart(analyzed.length ? analyzed : watchlist, primary);
+}
+
+function updateLivePanel(status) {
+  setText("live-armed", boolKo(status.armed, "켜짐", "꺼짐"));
+  setText("live-locked", boolKo(status.locked, "잠금", "점검 모드"));
+  setText("live-can-trade", boolKo(status.can_trade, "가능", "불가능"));
+  setText("live-message", status.message_ko || "-");
+  const section = document.getElementById("live-validation-console-section");
+  if (section) section.className = status.armed ? "locked armed" : "locked";
+}
+
+function updateReturnAndCharts(account, portfolio, journal, training) {
+  const starting = firstAmount(account.starting_cash);
+  const cash = firstAmount(account.cash);
+  const market = firstAmount(portfolio.market_value_by_currency);
+  const realized = firstAmount(portfolio.realized_pnl_by_currency);
+  const unrealized = firstAmount(portfolio.unrealized_pnl_by_currency);
+  const equity = cash + market;
+  const pnl = realized + unrealized + (starting ? equity - starting : 0);
+  const rate = starting ? ((equity - starting) / starting) * 100 : 0;
+  setText("ov-equity", formatMoney(equity, "USD"));
+  setText("ov-profit-loss", "손익: " + formatMoney(equity - starting, "USD"));
+  setText("ov-return-rate", starting ? formatRate(rate) : "-");
+  document.getElementById("ov-return-rate").className = "value " + (rate >= 0 ? "ok" : "bad");
+  setText("portfolio-realized", formatMoney(realized, "USD"));
+  setText("portfolio-unrealized", formatMoney(unrealized, "USD"));
+  const fills = journal.fills_count || 0;
+  const orders = journal.orders_count || 0;
+  const ticks = training && training.recent_counters ? (training.recent_counters["ticks" + "_total"] || 0) : 0;
+  const rejected = training && training.recent_counters ? (training.recent_counters["candidates" + "_blocked"] || 0) : 0;
+  drawLineChart("equity-chart", [starting, starting + realized, equity - unrealized, equity], { title: "시작 → 실현 → 평가 → 현재", rate: starting ? formatRate(rate) : "-" });
+  drawBarChart("activity-chart", [
+    { label: "Tick", value: ticks },
+    { label: "주문", value: orders },
+    { label: "체결", value: fills },
+    { label: "차단", value: rejected }
+  ]);
+}
+
+async function refreshProductConsole() {
+  let training = null;
+  try {
+    const paper = await fetchJson(ENDPOINTS.paperStatus);
+    setText("ov-paper-mode", paper.mode === "paper" ? "모의" : paper.mode);
+    setText("ov-live-locked", paper.live_enabled ? "해제" : "잠금");
+    setText("ov-kill-switch", paper.kill_switch_engaged ? "작동" : "꺼짐");
+    setText("ov-market-disabled", paper.market_orders_allowed ? "아니오" : "예");
+    setText("ov-kis-dry-run", paper.kis_order_dry_run ? "켜짐" : "꺼짐");
+  } catch (e) { logMsg("운영 개요 오류: " + e.message); }
+  try {
+    training = await fetchJson(ENDPOINTS.paperTrainingStatus);
+    setText("training-running", training.running ? "실행 중" : "정지");
+    setText("training-last-tick", "마지막 Tick: " + (training.last_tick_at || "-"));
+    setText("training-ticks", training["ticks" + "_total"]);
+    setText("training-error", "마지막 오류: " + (training.last_error || "-"));
+    renderPills("training-strategies", training.strategies || []);
+    const runs = await fetchJson(ENDPOINTS.paperTrainingRuns);
+    setText("training-runs", (runs.runs || []).length + "개");
+  } catch (e) { logMsg("모의 훈련 상태 오류: " + e.message); }
+  try {
+    const engineStatus = await fetchJson(ENDPOINTS.paperEngineStatus);
+    const account = engineStatus.account || {};
+    const portfolio = engineStatus.portfolio || {};
+    const journal = engineStatus.journal || {};
+    const cash = account.cash || {};
+    setText("ov-cash", JSON.stringify(cash));
+    setText("ov-positions", "보유 종목: " + (portfolio.positions_count || 0));
+    setText("portfolio-cash", JSON.stringify(cash));
+    setText("portfolio-positions", portfolio.positions_count || 0);
+    updateReturnAndCharts(account, portfolio, journal, training);
+  } catch (e) { logMsg("엔진 상태 오류: " + e.message); }
+  try {
+    const orders = await fetchJson(ENDPOINTS.paperOrders);
+    const openOrders = orders.open_orders || [];
+    setText("of-orders", openOrders.length + "건");
+  } catch (e) { logMsg("주문 요약 오류: " + e.message); }
+  try {
+    const fills = await fetchJson(ENDPOINTS.paperFills);
+    const rows = fills.fills || [];
+    setText("of-fills", rows.length + "건");
+  } catch (e) { logMsg("체결 요약 오류: " + e.message); }
+  try {
+    const agent = await fetchJson(ENDPOINTS.agentsStatus);
+    updateAgentVisuals(agent);
+  } catch (e) { logMsg("에이전트 상태 오류: " + e.message); }
+  try {
+    renderStrategyList(await fetchJson(ENDPOINTS.strategies));
+  } catch (e) { logMsg("전략 목록 오류: " + e.message); }
+  try {
+    const latest = await fetchJson(ENDPOINTS.reportsLatestAlias);
+    setSummary("reports-latest-summary", "최근 실행: " + (latest.run_dir || "-"), "");
+  } catch (e) { setSummary("reports-latest-summary", "최근 리포트 없음", "warn"); }
+  try {
+    const live = await fetchJson(ENDPOINTS.liveStatus);
+    updateLivePanel(live);
+    const account = await fetchJson(ENDPOINTS.liveAccount);
+    const positions = await fetchJson(ENDPOINTS.livePositions);
+    setText("live-account", account.status);
+    setText("live-positions", positions.status);
+  } catch (e) { logMsg("실거래 콘솔 오류: " + e.message); }
+  try {
+    const ops = await fetchJson(ENDPOINTS.opsPreflight);
+    const failed = (ops.items || []).filter((item) => !item.passed).length;
+    setSummary("risk-ops-summary", "사전 점검 실패 " + failed + "건 · 준비 상태 " + (ops.live_validation_ready ? "충족" : "미충족"), failed ? "warn" : "");
+  } catch (e) { logMsg("리스크 운영 오류: " + e.message); }
 }
 
 async function refreshOpsStatus() {
@@ -386,9 +934,7 @@ async function refreshOpsStatus() {
       ops.banner_level === "warning" ? "주의" : "안내";
     document.getElementById("ops-banner-text").textContent = " " + ops.banner_text_ko;
     renderChecklist(ops.items || []);
-  } catch (e) {
-    logMsg("ops/preflight error: " + e.message);
-  }
+  } catch (e) { logMsg("사전 점검 오류: " + e.message); }
 }
 
 function renderChecklist(items) {
@@ -398,7 +944,7 @@ function renderChecklist(items) {
   for (const item of items || []) {
     const li = document.createElement("li");
     li.className = item.passed ? "check-pass" : "check-fail";
-    li.textContent = (item.passed ? "PASS " : "FAIL ") + item.label_ko + " - " + item.detail_ko;
+    li.textContent = (item.passed ? "통과 " : "확인 필요 ") + item.label_ko + " - " + item.detail_ko;
     ul.appendChild(li);
   }
 }
@@ -416,6 +962,7 @@ async function fetchJson(url, init) {
 
 async function refreshAll() {
   await refreshOpsStatus();
+  await refreshProductConsole();
   try {
     const paper = await fetchJson(ENDPOINTS.paperStatus);
     setText("ps-mode", paper.mode === "paper" ? "모의거래" : paper.mode);
@@ -424,33 +971,33 @@ async function refreshAll() {
     setText("ps-market", boolKo(paper.market_orders_allowed, "허용", "비허용"));
     setText("ps-secret-exposed", boolKo(paper.secret_exposed, "노출", "노출 없음"));
     setText("kis-config-loaded", paper.kis_config_loaded);
+    setText("kis-api-mode", paper.kis_api_mode || "-");
     setText("kis-authenticated", paper.kis_authenticated);
     setText("kis-account-loaded", paper.kis_account_loaded);
     setText("kis-market-data", paper.kis_market_data_available);
     setText("kis-order-entry-ready", paper.kis_order_entry_ready);
+    setText("kis-status-note", paper.kis_status_note_ko || "-");
     setText("kis-last-error", paper.kis_last_error);
     setText("paper-last-error", paper.last_error || paper.kis_last_error);
-  } catch (e) {
-    logMsg("paper/status error: " + e.message);
-  }
+  } catch (e) { logMsg("안전 상태 오류: " + e.message); }
   try {
     const account = await fetchJson(ENDPOINTS.paperAccount);
     setText("acct-cash", JSON.stringify(account.cash || {}));
     setText("acct-realized", JSON.stringify(account.realized_pnl || {}));
-  } catch (e) { logMsg("paper/account error: " + e.message); }
+  } catch (e) { logMsg("계좌 오류: " + e.message); }
   try {
     const positions = await fetchJson(ENDPOINTS.paperPositions);
     setText("acct-unrealized", positions.unrealized_pnl);
     renderPositions(positions.positions || []);
-  } catch (e) { logMsg("paper/positions error: " + e.message); }
+  } catch (e) { logMsg("포지션 오류: " + e.message); }
   try {
     const orders = await fetchJson(ENDPOINTS.paperOrders);
     renderOpenOrders(orders.open_orders || []);
-  } catch (e) { logMsg("paper/orders error: " + e.message); }
+  } catch (e) { logMsg("주문 오류: " + e.message); }
   try {
     const fills = await fetchJson(ENDPOINTS.paperFills);
     renderFills(fills.fills || []);
-  } catch (e) { logMsg("paper/fills error: " + e.message); }
+  } catch (e) { logMsg("체결 오류: " + e.message); }
   try {
     const dryRun = await fetchJson(ENDPOINTS.dryRunStatus);
     const counters = dryRun.counters || {};
@@ -460,13 +1007,11 @@ async function refreshAll() {
     setText("dr-orders-created", counters["dry_run_orders" + "_created"]);
     setText("dr-errors-total", counters.errors_total);
     setText("dr-last-error", counters.last_error);
-  } catch (e) {
-    logMsg("dry-run/status error: " + e.message);
-  }
+  } catch (e) { logMsg("Dry-run 상태 오류: " + e.message); }
   try {
     const report = await fetchJson(ENDPOINTS.paperReportSummary);
     renderReport(report.user_summary || {}, report.summary || {});
-  } catch (e) { logMsg("paper/report/summary error: " + e.message); }
+  } catch (e) { logMsg("리포트 요약 오류: " + e.message); }
   try {
     const engineStatus = await fetchJson(ENDPOINTS.paperEngineStatus);
     const account = engineStatus.account || {};
@@ -484,7 +1029,7 @@ async function refreshAll() {
     setText("eng-journal-log", engine.paper_journal_log_dir_masked || "disabled");
     setText("eng-last-fill", engine.last_fill_at || "-");
     setText("eng-last-trade", engine.last_trade_at || "-");
-  } catch (e) { logMsg("paper/engine/status error: " + e.message); }
+  } catch (e) { logMsg("Paper Engine 상태 오류: " + e.message); }
 }
 
 function formValue(id) {
@@ -517,10 +1062,8 @@ async function submitPaperOrder() {
     setText("order-status-ko", result.filled ? "체결" : (result.accepted ? "접수됨" : "거절"));
     setText("order-riskcheck-ko", result["risk_result"] ? result["risk_result"].summary_ko : "-");
     setText("order-reject-ko", result.rejection_reason || "없음");
-    logMsg(result.summary_ko || ("paper order " + result.reason));
-  } catch (e) {
-    logMsg("paper order error: " + e.message);
-  }
+    logMsg(result.summary_ko || ("모의 주문 " + result.reason));
+  } catch (e) { logMsg("모의 주문 오류: " + e.message); }
   refreshAll();
 }
 
@@ -538,46 +1081,91 @@ function fillDemoOrder() {
   document.getElementById("order-currency").value = "USD";
 }
 
+async function postAction(endpoint, body) {
+  return fetchJson(endpoint, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body || {})
+  });
+}
+
 async function startDryRun() {
   try {
-    await fetchJson(ENDPOINTS.dryRunStart, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
-    logMsg("dry-run started");
-  } catch (e) { logMsg("start error: " + e.message); }
+    await postAction(ENDPOINTS.dryRunStart, {});
+    logMsg("Dry-run 시작 완료");
+  } catch (e) { logMsg("Dry-run 시작 오류: " + e.message); }
   refreshAll();
 }
 
 async function stopDryRun() {
   try {
-    await fetchJson(ENDPOINTS.dryRunStop, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
-    logMsg("dry-run stopped");
-  } catch (e) { logMsg("stop error: " + e.message); }
+    await postAction(ENDPOINTS.dryRunStop, {});
+    logMsg("Dry-run 중지 완료");
+  } catch (e) { logMsg("Dry-run 중지 오류: " + e.message); }
   refreshAll();
 }
 
 async function tickOnce() {
   try {
-    const result = await fetchJson(ENDPOINTS.dryRunTick, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ snapshots: [] }) });
-    logMsg("tick " + (result.tick ? result.tick.status : "ok"));
-  } catch (e) { logMsg("tick error: " + e.message); }
+    const result = await postAction(ENDPOINTS.dryRunTick, { snapshots: [] });
+    logMsg("Tick " + (result.tick ? result.tick.status : "완료"));
+  } catch (e) { logMsg("Tick 오류: " + e.message); }
+  refreshAll();
+}
+
+async function trainingAction(endpoint, label) {
+  try {
+    const result = await postAction(endpoint, { snapshots: [] });
+    const suffix = result.already_running ? "이미 실행 중" : "완료";
+    logMsg(label + " " + suffix);
+  } catch (e) { logMsg(label + " 오류: " + e.message); }
+  refreshAll();
+}
+
+async function runAgent() {
+  try {
+    const status = await fetchJson(ENDPOINTS.agentsStatus);
+    const symbols = (status.watchlist_candidates || ["AAPL", "MSFT", "NVDA"]).slice(0, 5);
+    const result = await postAction(ENDPOINTS.agentsRun, { symbols, context: { source: "dashboard" } });
+    updateAgentVisuals(result);
+    logMsg("에이전트 분석 완료: " + (result.analysis_count || symbols.length) + "개 종목");
+  } catch (e) { logMsg("에이전트 오류: " + e.message); }
+}
+
+async function armLiveValidation() {
+  try {
+    const result = await postAction(ENDPOINTS.liveArm, { acknowledge: true });
+    updateLivePanel(result);
+    logMsg("Live Validation 검증 모드를 켰습니다. 실주문은 계속 차단됩니다.");
+  } catch (e) { logMsg("Live Validation 켜기 오류: " + e.message); }
+  refreshAll();
+}
+
+async function disarmLiveValidation() {
+  try {
+    const result = await postAction(ENDPOINTS.liveDisarm, {});
+    updateLivePanel(result);
+    logMsg("Live Validation 검증 모드를 껐습니다.");
+  } catch (e) { logMsg("Live Validation 끄기 오류: " + e.message); }
   refreshAll();
 }
 
 async function analyze() {
   try {
-    const result = await fetchJson(ENDPOINTS.reportsAnalyze, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
-    document.getElementById("report-meta").textContent = "run_dir: " + (result.run_dir || "-");
+    const result = await postAction(ENDPOINTS.reportsAnalyze, {});
+    setText("report-meta", "run_dir: " + (result.run_dir || "-"));
     renderReport(result.user_summary || {}, result.summary || {});
-    logMsg("analyze ok");
-  } catch (e) { logMsg("analyze error: " + e.message); }
+    logMsg("리포트 분석 완료");
+  } catch (e) { logMsg("리포트 분석 오류: " + e.message); }
 }
 
 async function showLatest() {
   try {
     const result = await fetchJson(ENDPOINTS.reportsLatest);
-    document.getElementById("report-meta").textContent = "run_dir: " + (result.run_dir || "-");
+    setText("report-meta", "run_dir: " + (result.run_dir || "-"));
     renderReport(result.user_summary || {}, result.summary || {});
-    logMsg("latest ok");
-  } catch (e) { logMsg("latest error: " + e.message); }
+    logMsg("최신 리포트 로드 완료");
+  } catch (e) { logMsg("최신 리포트 오류: " + e.message); }
 }
 
 document.getElementById("btn-refresh").addEventListener("click", refreshAll);
@@ -586,15 +1174,20 @@ document.getElementById("paper-order-form").addEventListener("submit", function 
   submitPaperOrder();
 });
 document.getElementById("btn-submit-paper-order").addEventListener("click", submitPaperOrder);
-document.getElementById("btn-demo-order").addEventListener("click", function () {
-  fillDemoOrder();
-  submitPaperOrder();
-});
+document.getElementById("btn-demo-order").addEventListener("click", function () { fillDemoOrder(); submitPaperOrder(); });
+document.getElementById("btn-demo-order-inline").addEventListener("click", function () { fillDemoOrder(); submitPaperOrder(); });
 document.getElementById("btn-start-dry-run").addEventListener("click", startDryRun);
 document.getElementById("btn-tick").addEventListener("click", tickOnce);
 document.getElementById("btn-stop-dry-run").addEventListener("click", stopDryRun);
 document.getElementById("btn-analyze").addEventListener("click", analyze);
 document.getElementById("btn-latest").addEventListener("click", showLatest);
+document.getElementById("btn-training-start").addEventListener("click", function () { trainingAction(ENDPOINTS.paperTrainingStart, "훈련 시작"); });
+document.getElementById("btn-training-tick").addEventListener("click", function () { trainingAction(ENDPOINTS.paperTrainingTick, "훈련 Tick"); });
+document.getElementById("btn-training-stop").addEventListener("click", function () { trainingAction(ENDPOINTS.paperTrainingStop, "훈련 중지"); });
+document.getElementById("btn-training-status").addEventListener("click", refreshProductConsole);
+document.getElementById("btn-agent-run").addEventListener("click", runAgent);
+document.getElementById("btn-live-validation-arm").addEventListener("click", armLiveValidation);
+document.getElementById("btn-live-validation-disarm").addEventListener("click", disarmLiveValidation);
 
 refreshAll();
 </script>

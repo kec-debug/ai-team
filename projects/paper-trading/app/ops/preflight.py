@@ -34,6 +34,7 @@ class LiveValidationStatus:
     kis_market_data_available: bool
     kis_account_loaded: bool
     kis_order_entry_ready: bool
+    secret_exposed: bool
     live_validation_ready: bool
     banner_level: str
     banner_text_ko: str
@@ -70,20 +71,10 @@ def compute_live_validation_status(
     kis_authenticated = bool(paper_status_payload.get("kis_authenticated", False))
     kis_market_data_available = bool(paper_status_payload.get("kis_market_data_available", False))
     kis_account_loaded = bool(paper_status_payload.get("kis_account_loaded", False))
-    kis_order_entry_ready = bool(paper_status_payload.get("kis_order_entry_ready", False))
+    kis_order_entry_ready = bool(paper_status_payload.get("kis_order_submission_available", False))
     secret_exposed = bool(paper_status_payload.get("secret_exposed", False))
 
     has_recent_paper = _has_recent_paper_activity(paper_engine)
-    ready = (
-        trading_mode == "paper"
-        and live_enabled is False
-        and market_allowed is False
-        and dry_run is True
-        and kill_switch is False
-        and kis_config_loaded
-        and secret_exposed is False
-        and has_recent_paper
-    )
 
     if live_enabled or market_allowed or secret_exposed:
         banner_level = "danger"
@@ -190,6 +181,7 @@ def compute_live_validation_status(
             "수동 확인 필요 - 운영자가 별도 확인",
         ),
     )
+    ready = all(item.passed for item in items)
 
     return LiveValidationStatus(
         live_trading_enabled=live_enabled,
@@ -203,6 +195,7 @@ def compute_live_validation_status(
         kis_market_data_available=kis_market_data_available,
         kis_account_loaded=kis_account_loaded,
         kis_order_entry_ready=kis_order_entry_ready,
+        secret_exposed=secret_exposed,
         live_validation_ready=ready,
         banner_level=banner_level,
         banner_text_ko=banner_text,

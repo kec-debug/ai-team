@@ -132,3 +132,44 @@ def test_ops_preflight_after_recent_simulation_keeps_safe_flags(monkeypatch, tmp
     assert keys["kis_dry_run_enabled_confirmed"] is True
     assert keys["secret_exposed_false_confirmed"] is True
     assert keys["dashboard_simulation_available"] is True
+
+
+def test_live_validation_ready_matches_preflight_items(monkeypatch, tmp_path):
+    _isolated_project(monkeypatch, tmp_path)
+    with TestClient(create_app()) as client:
+        body = client.get("/ops/preflight").json()
+    assert body["live_validation_ready"] is all(item["passed"] for item in body["items"])
+
+
+def test_ops_secret_exposed_serialization_is_not_overwritten(monkeypatch, tmp_path):
+    _isolated_project(monkeypatch, tmp_path)
+
+    def exposed_payload(_request):
+        return {
+            "mode": "paper",
+            "live_trading_enabled": False,
+            "market_orders_allowed": False,
+            "kis_order_dry_run": True,
+            "kill_switch_engaged": False,
+            "broker_type": "PaperBroker",
+            "kis_config_loaded": True,
+            "kis_authenticated": False,
+            "kis_market_data_available": False,
+            "kis_account_loaded": False,
+            "kis_order_entry_ready": True,
+            "kis_order_submission_available": False,
+            "secret_exposed": True,
+        }
+
+    monkeypatch.setattr("app.api.routes.paper_status", exposed_payload)
+    with TestClient(create_app()) as client:
+        body = client.get("/ops/status").json()
+    assert body["secret_exposed"] is True
+    assert body["live_validation_ready"] is False
+
+
+def test_ops_kis_order_entry_ready_uses_submission_capability(monkeypatch, tmp_path):
+    _isolated_project(monkeypatch, tmp_path)
+    with TestClient(create_app()) as client:
+        body = client.get("/ops/status").json()
+    assert body["kis_order_entry_ready"] is False

@@ -55,8 +55,12 @@ http://127.0.0.1:8000/dashboard
 ## 4. Dashboard 에서 확인할 것
 
 - 상단 안전 배너가 paper / dry-run 전용임을 표시하는지 확인합니다.
+- `Overview`에서 paper mode, live locked, kill switch, market order disabled, KIS dry-run, paper cash, positions count를 확인합니다.
+- `Paper Training`에서 start/stop/tick/status/history를 확인합니다. 이 기능은 24시간 paper 관찰에 사용할 수 있지만 실거래가 아닙니다.
+- `Agent Research`와 `Strategy Lab`은 분석과 non-executable intent만 제공합니다. Agent/Strategy가 직접 주문하거나 OMS를 우회하지 않는지 확인합니다.
 - `Live Validation 준비 상태`가 read-only 상태값만 보여주는지 확인합니다.
 - `Preflight Checklist`의 14개 항목을 확인합니다.
+- `Live Validation` 콘솔은 검증 모드 on/off만 허용합니다. account/positions 조회가 unavailable/degraded여도 live 주문 실행으로 이어지지 않습니다.
 - KIS 상태에서 config/auth/account/market/order readiness를 확인합니다.
 - Paper 계좌에서 cash, positions, PnL, fills, rejected orders를 확인합니다.
 - Dry-run 상태에서 running, ticks, candidates, orders, errors를 확인합니다.
@@ -76,6 +80,23 @@ http://127.0.0.1:8000/dashboard
 
 ```bash
 curl http://127.0.0.1:8000/reports/dry-run/latest
+curl http://127.0.0.1:8000/reports/latest
+```
+
+Paper Training wrapper endpoint도 동일한 dry-run controller를 사용합니다.
+
+```bash
+curl http://127.0.0.1:8000/paper/training/status
+curl -X POST http://127.0.0.1:8000/paper/training/start
+curl -X POST http://127.0.0.1:8000/paper/training/tick -H "content-type: application/json" -d '{"snapshots":[]}'
+curl -X POST http://127.0.0.1:8000/paper/training/stop
+```
+
+Live Validation 토글은 운영 점검 상태만 바꿉니다. 실주문 가능 상태로 전환하지 않습니다.
+
+```bash
+curl -X POST http://127.0.0.1:8000/live/arm -H "content-type: application/json" -d '{"acknowledge":true}'
+curl -X POST http://127.0.0.1:8000/live/disarm
 ```
 
 ## 6. Paper simulation 예시

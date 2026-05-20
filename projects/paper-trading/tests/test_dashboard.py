@@ -70,6 +70,17 @@ def test_dashboard_has_required_sections_and_buttons():
         "Dry-run 중지",
         "리포트 분석",
         "최신 리포트 보기",
+        "Overview",
+        "Paper Training",
+        "Agent Research",
+        "Strategy Lab",
+        "Orders / Fills",
+        "Portfolio",
+        "Reports",
+        "Live Validation",
+        "Risk / Ops",
+        "Training 시작",
+        "Agent 분석 실행",
     ):
         assert marker in text
 
@@ -104,10 +115,16 @@ def test_dashboard_endpoint_urls_are_whitelisted():
         "/paper/order/simulate",
         "/paper/engine/status",
         "/paper/report/summary",
+        "/paper/training/status",
+        "/paper/training/start",
+        "/paper/training/stop",
+        "/paper/training/tick",
+        "/paper/training/runs",
         "/paper/dry-run/status",
         "/paper/dry-run/start",
         "/paper/dry-run/stop",
         "/paper/dry-run/tick",
+        "/reports/latest",
         "/reports/dry-run/analyze",
         "/reports/dry-run/latest",
     }
@@ -143,6 +160,23 @@ def test_dashboard_has_preflight_checklist_section():
     response = TestClient(create_app()).get("/dashboard")
     assert response.status_code == 200
     assert "Preflight Checklist" in response.text
+
+
+def test_dashboard_has_live_toggle_and_agent_visual_markers():
+    text = _html()
+    for marker in (
+        "Live Validation 켜기",
+        "Live Validation 끄기",
+        "분석 종목 수",
+        "주요 종목",
+        "분석 후보 흐름",
+        "agent-symbol-chart",
+        "KIS API 모드",
+        "KIS 연결 해석",
+        'id="btn-live-validation-arm"',
+        'id="btn-live-validation-disarm"',
+    ):
+        assert marker in text
 
 
 def test_dashboard_has_safety_banner_text():
