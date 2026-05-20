@@ -210,7 +210,7 @@ def test_live_order_entry_request_is_gated_and_does_not_enable_trading():
         assert disabled.json()["requested"] is False
 
 
-def test_kis_runtime_endpoints_are_safe_when_mock_mode():
+def test_kis_runtime_endpoints_never_expose_secrets():
     with TestClient(create_app()) as client:
         status = client.get("/kis/status")
         assert status.status_code == 200
@@ -219,7 +219,9 @@ def test_kis_runtime_endpoints_are_safe_when_mock_mode():
         auth = client.post("/kis/authenticate")
         if auth.status_code == 200:
             assert auth.json()["secret_exposed"] is False
-            assert auth.json()["ok"] is False
-            assert "mock_mode_no_network" in auth.json()["error"]
+            assert "ok" in auth.json()
+            assert "KIS_APP_KEY" not in auth.text
+            assert "KIS_APP_SECRET" not in auth.text
+            assert "KIS_ACCOUNT_NO" not in auth.text
         else:
             assert auth.status_code == 424

@@ -537,9 +537,9 @@ def live_status(request: Request) -> dict[str, Any]:
         "order_entry": order_entry,
         "mode": "validation_armed" if armed else "locked",
         "message_ko": (
-            "Live Validation 검증 모드가 켜져 있습니다. 실주문은 여전히 차단됩니다."
+            "실거래 검증 모드가 켜져 있습니다. 실주문은 여전히 차단됩니다."
             if armed
-            else "Live Validation 검증 모드가 꺼져 있습니다. 실주문은 차단됩니다."
+            else "실거래 검증 모드가 꺼져 있습니다. 실주문은 차단됩니다."
         ),
         "preflight": status,
         "secret_exposed": status["secret_exposed"],
