@@ -131,3 +131,36 @@ def test_dashboard_has_no_external_assets_or_frameworks():
     assert "stylesheet" not in text
     assert "https://" not in text
     assert "http://" not in text
+
+
+def test_dashboard_has_live_validation_readiness_section():
+    response = TestClient(create_app()).get("/dashboard")
+    assert response.status_code == 200
+    assert "Live Validation 준비 상태" in response.text
+
+
+def test_dashboard_has_preflight_checklist_section():
+    response = TestClient(create_app()).get("/dashboard")
+    assert response.status_code == 200
+    assert "Preflight Checklist" in response.text
+
+
+def test_dashboard_has_safety_banner_text():
+    response = TestClient(create_app()).get("/dashboard")
+    assert response.status_code == 200
+    assert "paper / dry-run 전용" in response.text
+    assert "live trading 은 비활성화되어 있으며" in response.text
+
+
+def test_dashboard_has_no_live_arm_or_enable_buttons():
+    response = TestClient(create_app()).get("/dashboard")
+    assert response.status_code == 200
+    forbidden_ids = (
+        'id="btn-arm-live"',
+        'id="btn-enable-live"',
+        'id="btn-disable-dry-run"',
+        'id="btn-allow-market"',
+        'id="btn-toggle-kill-switch"',
+    )
+    for marker in forbidden_ids:
+        assert marker not in response.text
