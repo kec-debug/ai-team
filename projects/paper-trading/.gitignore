@@ -1,4 +1,6 @@
 .env
+.kis-token-cache.json
+.kis-token-cache.*
 __pycache__/
 .pytest_cache/
 *.egg-info/
